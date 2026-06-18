@@ -1,0 +1,1940 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>煉金學園：元素之戰 (教學修正版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Error Logger -->
+    <style>
+        #error-log { display:none; position:fixed; bottom:10px; right:10px; background:white; border:2px solid red; padding:10px; z-index:9999; font-size:12px; color:red; max-height: 200px; overflow: auto; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <div id="error-log"></div>
+
+    <script>
+        window.onerror = function(msg, src, line) {
+            const el = document.getElementById('error-log');
+            el.style.display = 'block';
+            el.innerHTML += `<div><strong>Error:</strong> ${msg} <br><span style="color:#666">(Line: ${line})</span></div>`;
+            console.error(msg);
+        };
+    </script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, writeBatch, query, where, orderBy, getDocs, arrayUnion, arrayRemove, deleteDoc, runTransaction, addDoc, increment, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, writeBatch, query, where, orderBy, getDocs, arrayUnion, arrayRemove, deleteDoc, runTransaction, addDoc, increment, limit };
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Cinzel:wght@700&display=swap');
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            background-color: #0f172a;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+
+        .gold-text {
+            background: linear-gradient(to bottom, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0px 2px 0px rgba(0,0,0,0.3);
+            filter: drop-shadow(0 0 10px rgba(253, 224, 71, 0.3));
+        }
+
+        .silver-text {
+            background: linear-gradient(to bottom, #e2e8f0, #f8fafc, #94a3b8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: 0.2em;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .rpg-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease;
+            border: 1px solid #e2e8f0;
+        }
+        .rpg-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3); border-color: #3b82f6; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(5px); }
+        .animate-bounce-short { animation: bounce 0.5s ease-in-out 1; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        .avatar-option { cursor: pointer; border: 3px solid transparent; border-radius: 50%; padding: 2px; transition: all 0.2s; background: white; object-fit: cover; }
+        .avatar-option:hover { transform: scale(1.1); }
+        .avatar-option.selected { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); }
+
+        .element-badge {
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            border: 2px solid #475569;
+            color: #0f172a;
+            font-family: 'Times New Roman', serif;
+            box-shadow: 2px 2px 0px #94a3b8;
+        }
+
+        .rank-badge-1 { color: #F59E0B; text-shadow: 0 0 10px rgba(245, 158, 11, 0.5); font-size: 1.5rem; }
+        .rank-badge-2 { color: #94A3B8; font-size: 1.2rem; }
+        .rank-badge-3 { color: #B45309; font-size: 1.2rem; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+
+    <script type="text/babel" data-presets="env,react">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Config ---
+        const APP_ID = "science_game_v1";
+        const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
+        const DEFAULT_TEACHER_PWD = "admin";
+
+        // Avatars
+        const AVATARS = [
+            "https://cdn-icons-png.flaticon.com/128/4140/4140048.png",
+            "https://cdn-icons-png.flaticon.com/128/4140/4140037.png",
+            "https://cdn-icons-png.flaticon.com/128/2314/2314952.png",
+            "https://cdn-icons-png.flaticon.com/128/2314/2314954.png",
+            "https://cdn-icons-png.flaticon.com/128/2314/2314953.png",
+            "https://cdn-icons-png.flaticon.com/128/2314/2314956.png",
+            "https://cdn-icons-png.flaticon.com/128/3408/3408545.png",
+            "https://cdn-icons-png.flaticon.com/128/3408/3408584.png"
+        ];
+
+        const LEVEL_DATA = [
+            {name: "氫", min: 0, max: 99, hp: 0, atk: 0, def: 0},
+            {name: "氦", min: 100, max: 199, hp: 20, atk: 20, def: 20},
+            {name: "鋰", min: 200, max: 399, hp: 30, atk: 50, def: 20},
+            {name: "鈹", min: 400, max: 599, hp: 30, atk: 50, def: 30},
+            {name: "硼", min: 600, max: 799, hp: 30, atk: 50, def: 35},
+            {name: "碳", min: 800, max: 999, hp: 50, atk: 50, def: 35},
+            {name: "氮", min: 1000, max: 1199, hp: 55, atk: 50, def: 35},
+            {name: "氧", min: 1200, max: 1399, hp: 60, atk: 50, def: 50},
+            {name: "氟", min: 1400, max: 1599, hp: 60, atk: 60, def: 50},
+            {name: "氖", min: 1600, max: 1799, hp: 60, atk: 60, def: 60},
+            {name: "鈉", min: 1800, max: 2099, hp: 70, atk: 100, def: 60},
+            {name: "鎂", min: 2100, max: 2399, hp: 70, atk: 100, def: 70},
+            {name: "鋁", min: 2400, max: 2699, hp: 75, atk: 100, def: 75},
+            {name: "矽", min: 2700, max: 2999, hp: 80, atk: 100, def: 80},
+            {name: "磷", min: 3000, max: 3299, hp: 80, atk: 110, def: 80},
+            {name: "硫", min: 3300, max: 3599, hp: 80, atk: 120, def: 90},
+            {name: "氯", min: 3600, max: 3899, hp: 80, atk: 150, def: 90},
+            {name: "氬", min: 3900, max: 4199, hp: 90, atk: 150, def: 100},
+            {name: "鉀", min: 4300, max: 4699, hp: 100, atk: 180, def: 100},
+            {name: "鈣", min: 4700, max: 5099, hp: 150, atk: 180, def: 120},
+            {name: "鈧", min: 5100, max: 99999, hp: 160, atk: 180, def: 130}
+        ];
+
+        const INITIAL_STATS = {
+            hp: 100, maxHp: 100, atk: 10, def: 10, gold: 0, xp: 0, levelName: "氫", hearts: 0,
+            totalQuizQuestions: 0,
+            totalQuizCorrect: 0
+        };
+
+        const getLevelInfo = (xp) => {
+            const safeXp = xp || 0;
+            const lvl = LEVEL_DATA.find(l => safeXp >= l.min && safeXp <= l.max) || LEVEL_DATA[LEVEL_DATA.length - 1];
+            return lvl;
+        };
+
+        const formatDate = (date) => {
+            const d = new Date(date);
+            return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+        };
+
+        // --- Firebase Hook ---
+        const useFirebase = () => {
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [ready, setReady] = useState(false);
+            const [error, setError] = useState(null);
+            const retryCount = useRef(0);
+
+            useEffect(() => {
+                const init = async () => {
+                    if (!window.firebaseModules) {
+                        if (retryCount.current > 20) {
+                             setError("載入逾時：無法讀取 Firebase 模組。請檢查網路連線。");
+                             setReady(true);
+                             return;
+                        }
+                        retryCount.current++;
+                        setTimeout(init, 500);
+                        return;
+                    }
+
+                    try {
+                        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore } = window.firebaseModules;
+
+                        const config = {
+                            apiKey: "AIzaSyDnL5amcs5hkWw_Fl_1IKfAw-KJeL7QGVs",
+                            authDomain: "hh-2e4b8.firebaseapp.com",
+                            projectId: "hh-2e4b8",
+                            storageBucket: "hh-2e4b8.firebasestorage.app",
+                            messagingSenderId: "612613725839",
+                            appId: "1:612613725839:web:2b58ff031d04f330cc5afa",
+                            measurementId: "G-XJ4RGMGPS8"
+                        };
+
+                        if (Object.keys(config).length === 0) console.warn("Firebase config empty");
+
+                        const app = initializeApp(config);
+                        const a = getAuth(app);
+                        const d = getFirestore(app);
+
+                        const trySignIn = async () => {
+                            try {
+                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                    await signInWithCustomToken(a, __initial_auth_token);
+                                } else {
+                                    await signInAnonymously(a);
+                                }
+                            } catch (signInErr) {
+                                console.warn("Primary sign-in failed, fallback to anon", signInErr);
+                                try { await signInAnonymously(a); } catch (anonErr) { throw anonErr; }
+                            }
+                        };
+
+                        await trySignIn();
+                        setAuth(a);
+                        setDb(d);
+                    } catch (e) {
+                        console.error("Firebase Init Error", e);
+                        setError(e.message || "資料庫連接失敗");
+                    } finally {
+                        setReady(true);
+                    }
+                };
+                init();
+            }, []);
+            return { db, auth, ready, error };
+        };
+
+        // --- Shared Components ---
+
+        const Modal = ({ title, children, onClose, footer }) => (
+            <div className="modal-overlay">
+                <div className="glass-panel w-full max-w-md mx-4 overflow-hidden animate-bounce-short flex flex-col max-h-[85vh]">
+                    <div className="bg-gradient-to-r from-blue-900 to-slate-900 p-4 flex justify-between items-center text-white border-b border-white/10 shrink-0">
+                        <h3 className="font-bold text-lg tracking-wider text-yellow-400">{title}</h3>
+                        {onClose && <button onClick={onClose} className="text-white/70 hover:text-white transition"><i className="fas fa-times"></i></button>}
+                    </div>
+                    <div className="p-6 overflow-y-auto grow custom-scrollbar relative">
+                        {children}
+                    </div>
+                    {footer && <div className="bg-slate-50/50 p-4 border-t flex justify-end gap-2 shrink-0">{footer}</div>}
+                </div>
+            </div>
+        );
+
+        const Loading = ({msg}) => <div className="flex flex-col justify-center items-center h-screen bg-slate-900 text-white"><i className="fas fa-atom fa-spin text-5xl text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"></i><p className="text-blue-200 animate-pulse font-bold">{msg || "正在連結元素世界..."}</p></div>;
+
+        const ErrorScreen = ({msg}) => (
+            <div className="flex flex-col justify-center items-center h-screen bg-slate-900 p-4 text-center">
+                <div className="glass-panel p-8 max-w-sm border-red-500 border-2">
+                    <i className="fas fa-exclamation-triangle text-5xl text-red-500 mb-4"></i>
+                    <h2 className="text-xl font-bold text-red-600 mb-2">系統發生錯誤</h2>
+                    <p className="text-slate-600 mb-6 text-sm">{msg}</p>
+                    <button onClick={()=>window.location.reload()} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700">重新整理</button>
+                </div>
+            </div>
+        );
+
+        // --- Leaderboard View ---
+        const LeaderboardView = ({ db, currentUser, isTeacherMode }) => {
+            const [users, setUsers] = useState([]);
+            const [category, setCategory] = useState("total");
+
+            useEffect(() => {
+                const fetchAll = async () => {
+                    let all = [];
+                    for (let c of CLASSES) {
+                        if(!db) continue;
+                        const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
+                        const snap = await window.firebaseModules.getDocs(q);
+                        snap.forEach(d => {
+                            const u = d.data();
+                            const score = (u.xp||0) + ((u.maxHp||100) + (u.atk||10) + (u.def||10)) + ((u.hearts||0)*10) + Math.floor((u.gold||0)*0.1);
+                            all.push({...u, class: c, id: d.id, score});
+                        });
+                    }
+                    setUsers(all);
+                };
+                if(db) fetchAll();
+            }, [db]);
+
+            const getSortedUsers = () => {
+                let sorted = [...users];
+                switch(category) {
+                    case 'total': sorted.sort((a,b) => b.score - a.score); break;
+                    case 'xp': sorted.sort((a,b) => (b.xp||0) - (a.xp||0)); break;
+                    case 'gold': sorted.sort((a,b) => (b.gold||0) - (a.gold||0)); break;
+                    case 'hearts': sorted.sort((a,b) => (b.hearts||0) - (a.hearts||0)); break;
+                    case 'hp': sorted.sort((a,b) => (b.maxHp||0) - (a.maxHp||0)); break;
+                    case 'atk': sorted.sort((a,b) => (b.atk||0) - (a.atk||0)); break;
+                    case 'def': sorted.sort((a,b) => (b.def||0) - (a.def||0)); break;
+                }
+                return sorted;
+            };
+
+            const sortedList = getSortedUsers();
+            const myRank = currentUser ? sortedList.findIndex(u => u.id === currentUser.id) + 1 : 0;
+            const displayList = isTeacherMode ? sortedList : sortedList.slice(0, 10);
+
+            const categories = [
+                {id: 'total', name: '元素大師', icon: 'fa-trophy', color: 'text-yellow-500'},
+                {id: 'xp', name: '博學多聞', icon: 'fa-book', color: 'text-blue-500'},
+                {id: 'gold', name: '煉金大亨', icon: 'fa-coins', color: 'text-yellow-600'},
+                {id: 'hearts', name: '校園人氣', icon: 'fa-heart', color: 'text-pink-500'},
+                {id: 'hp', name: '堅韌肉盾', icon: 'fa-shield-heart', color: 'text-red-500'},
+                {id: 'atk', name: '破壞神', icon: 'fa-khanda', color: 'text-orange-500'},
+                {id: 'def', name: '守護者', icon: 'fa-shield-alt', color: 'text-indigo-500'},
+            ];
+
+            return (
+                <div className="space-y-4">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {categories.map(c => (
+                            <button key={c.id} onClick={()=>setCategory(c.id)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${category===c.id ? 'bg-blue-600 text-white shadow-lg scale-105 ring-2 ring-blue-300' : 'bg-white text-slate-500 hover:bg-blue-50'}`}>
+                                <i className={`fas ${c.icon} ${category===c.id?'text-white':c.color}`}></i> {c.name}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="glass-panel p-4 min-h-[300px]">
+                        <h3 className="font-bold text-center text-lg mb-4 text-slate-700 flex items-center justify-center gap-2">
+                            <i className={`fas ${categories.find(c=>c.id===category).icon} text-xl`}></i>
+                            {categories.find(c=>c.id===category).name}榜 <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-500">{isTeacherMode ? "完整榜單" : "Top 10"}</span>
+                        </h3>
+                        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                            {displayList.map((u, idx) => (
+                                <div key={u.id} className={`flex items-center p-2 rounded-lg transition ${currentUser && u.id === currentUser.id ? 'bg-yellow-50 border border-yellow-300 shadow-sm' : 'bg-white/50 border border-transparent'}`}>
+                                    <div className={`w-8 text-center font-black italic ${idx===0?'rank-badge-1':idx===1?'rank-badge-2':idx===2?'rank-badge-3':'text-slate-400'}`}>#{idx+1}</div>
+                                    <img src={u.avatar} className="w-8 h-8 rounded-full bg-white border border-slate-200 mx-2" />
+                                    <div className="flex-1 text-sm">
+                                        <div className="font-bold text-slate-800 truncate">
+                                            {isTeacherMode ? `${u.class}班 ${u.name}` : (u.nickname || "神秘人")}
+                                        </div>
+                                        {isTeacherMode && <div className="text-xs text-slate-400">{u.nickname}</div>}
+                                    </div>
+                                    <div className="font-mono font-bold text-blue-600">
+                                        {category === 'total' && Math.floor(u.score)}
+                                        {category === 'xp' && u.xp}
+                                        {category === 'gold' && u.gold}
+                                        {category === 'hearts' && u.hearts}
+                                        {category === 'hp' && u.maxHp}
+                                        {category === 'atk' && u.atk}
+                                        {category === 'def' && u.def}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {currentUser && !isTeacherMode && (
+                            <div className="mt-4 pt-4 border-t border-slate-200 text-center text-sm font-bold text-slate-600">
+                                你的排名: <span className="text-blue-600 text-lg">#{myRank > 0 ? myRank : "榜外"}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Views ---
+
+        const LoginView = ({ classId, onLogin, onTeacherLogin, onBack }) => {
+            const [mode, setMode] = useState('student');
+            const [seat, setSeat] = useState("");
+            const [pwd, setPwd] = useState("");
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="glass-panel p-8 w-full max-w-sm shadow-2xl">
+                        <button onClick={onBack} className="text-slate-400 text-sm mb-4 hover:text-slate-600 flex items-center gap-1"><i className="fas fa-arrow-left"></i> 重選班級</button>
+                        <h2 className="text-3xl font-black text-center mb-6 text-slate-800 tracking-tight">{classId} <span className="text-lg font-normal text-slate-500">班</span></h2>
+                        <h3 className="text-center text-blue-600 font-bold mb-6 text-lg">{mode === 'student' ? '學生登入' : '老師後台'}</h3>
+
+                        <div className="space-y-4">
+                            {mode === 'student' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wide">座號</label>
+                                    <input type="number" value={seat} onChange={e=>setSeat(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700" placeholder="例如: 5" />
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wide">密碼</label>
+                                <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700" placeholder="輸入密碼" />
+                            </div>
+
+                            {mode === 'student' && (
+                                <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100 flex gap-2">
+                                    <i className="fas fa-info-circle mt-0.5"></i> <span>首次登入請輸入座號，並在密碼欄輸入<strong>任意字元</strong>（如 1234）即可進入註冊畫面。</span>
+                                </div>
+                            )}
+
+                            <button onClick={() => mode === 'student' ? onLogin(seat, pwd) : onTeacherLogin(pwd)} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-bold hover:shadow-lg transform hover:-translate-y-0.5 transition-all">
+                                {mode === 'student' ? '登入 / 註冊' : '進入後台'}
+                            </button>
+                        </div>
+
+                        <div className="mt-6 pt-6 border-t border-slate-100 text-center flex justify-between items-center">
+                            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-xs text-red-300 hover:text-red-500">
+                                清除暫存
+                            </button>
+                            <button onClick={() => setMode(mode === 'student' ? 'teacher' : 'student')} className="text-sm text-slate-400 hover:text-blue-600 font-bold underline decoration-2 decoration-blue-100 hover:decoration-blue-600 underline-offset-4 transition-all">
+                                {mode === 'student' ? '我是老師' : '我是學生'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const RegisterModal = ({ seat, onRegister, onCancel }) => {
+            const [name, setName] = useState("");
+            const [nickname, setNickname] = useState("");
+            const [gender, setGender] = useState("boy");
+            const [avatar, setAvatar] = useState(AVATARS[0]);
+            const [customAvatar, setCustomAvatar] = useState("");
+            const [pwd, setPwd] = useState("");
+
+            const finalAvatar = customAvatar || avatar;
+
+            return (
+                <Modal title="初次見面！建立檔案" onClose={onCancel}>
+                    <div className="space-y-4">
+                        <div className="bg-yellow-50 p-3 rounded text-sm text-yellow-800"><i className="fas fa-exclamation-triangle"></i> 姓名與座號註冊後無法自行修改，請填寫正確！</div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">座號</label>
+                                <div className="text-lg font-bold bg-gray-100 p-2 rounded text-center">{seat}</div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">性別</label>
+                                <div className="flex gap-2 bg-gray-100 p-2 rounded justify-center">
+                                    <label className="cursor-pointer"><input type="radio" name="gender" value="boy" checked={gender==='boy'} onChange={()=>setGender('boy')} /> 男</label>
+                                    <label className="cursor-pointer"><input type="radio" name="gender" value="girl" checked={gender==='girl'} onChange={()=>setGender('girl')} /> 女</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">真實姓名 (老師看)</label>
+                            <input value={name} onChange={e=>setName(e.target.value)} className="w-full p-2 border rounded" placeholder="請輸入姓名" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">暱稱 (同學看)</label>
+                            <input value={nickname} onChange={e=>setNickname(e.target.value)} className="w-full p-2 border rounded" placeholder="取個帥氣的名字" />
+                        </div>
+                         <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">設定登入密碼</label>
+                            <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full p-2 border rounded" placeholder="未來登入用" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-2">選擇頭像</label>
+                            <div className="flex gap-2 mb-2 flex-wrap justify-center bg-gray-50 p-2 rounded">
+                                {AVATARS.map(a => (
+                                    <img key={a} src={a} onClick={()=>setAvatar(a)} className={`w-12 h-12 rounded-full avatar-option ${avatar===a && !customAvatar ? 'selected' : ''}`} />
+                                ))}
+                            </div>
+                            <input value={customAvatar} onChange={e=>setCustomAvatar(e.target.value)} className="w-full p-2 border rounded text-xs" placeholder="或貼上圖片網址..." />
+                        </div>
+                        <button disabled={!name || !pwd || !nickname} onClick={()=>onRegister({name, nickname, gender, avatar: finalAvatar, password: pwd})} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold disabled:opacity-50 hover:bg-blue-700 transition">開始冒險</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        const StudentDashboard = ({ user, db, classId, onLogout }) => {
+            const [view, setView] = useState('home');
+            const [msg, setMsg] = useState(null);
+            const [quizModal, setQuizModal] = useState(false);
+            const [pkModal, setPkModal] = useState(null);
+            const [pkNotification, setPkNotification] = useState(null);
+            const [fortuneResult, setFortuneResult] = useState(null);
+
+            const [currentUser, setCurrentUser] = useState({...user, class: classId});
+
+            useEffect(() => {
+                if(!db || !user.id) return;
+
+                // 1. User Listener
+                const unsubUser = window.firebaseModules.onSnapshot(
+                    window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id),
+                    (doc) => {
+                        if (doc.exists()) {
+                            setCurrentUser({id: doc.id, ...doc.data(), class: classId});
+                        }
+                    }
+                );
+
+                // 2. PK Listener (Incoming Attacks)
+                const pkQuery = window.firebaseModules.query(
+                    window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks'),
+                    window.firebaseModules.where('defenderId', '==', user.id),
+                    window.firebaseModules.where('status', '==', 'active')
+                );
+
+                const unsubPk = window.firebaseModules.onSnapshot(pkQuery, (snap) => {
+                    if (!snap.empty) {
+                        setPkModal({ id: snap.docs[0].id, ...snap.docs[0].data() });
+                    } else {
+                        setPkModal(null);
+                    }
+                });
+
+                // 3. PK Result Notification
+                const notifQuery = window.firebaseModules.query(
+                    window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'),
+                    window.firebaseModules.where('targetId', '==', user.id)
+                );
+
+                const unsubNotif = window.firebaseModules.onSnapshot(notifQuery, (snap) => {
+                    if(!snap.empty) {
+                        const n = snap.docs[0].data();
+                        setPkNotification({id: snap.docs[0].id, ...n});
+                    }
+                });
+
+                return () => { unsubUser(); unsubPk(); unsubNotif(); };
+            }, [db, user.id, classId]);
+
+            // Daily Login
+            useEffect(() => {
+                if(!currentUser || !currentUser.lastLoginDate) return;
+                const today = formatDate(new Date());
+                if (currentUser.lastLoginDate !== today) {
+                    const doDailyUpdate = async () => {
+                        const { doc, updateDoc } = window.firebaseModules;
+                        const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
+                        await updateDoc(userRef, {
+                            hp: currentUser.maxHp,
+                            gold: (currentUser.gold || 0) + 100,
+                            lastLoginDate: today,
+                            dailyQuizCount: 0
+                        });
+                        setMsg({title: "每日登入獎勵", content: "歡迎回來！生命值已補滿，獲得 100 金幣！"});
+                    };
+                    doDailyUpdate();
+                }
+            }, [currentUser.lastLoginDate]);
+
+            const addExp = async (amount) => {
+                const { doc, runTransaction } = window.firebaseModules;
+                const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
+
+                await runTransaction(db, async (t) => {
+                    const uDoc = await t.get(userRef);
+                    const uData = uDoc.data();
+                    let newXp = (uData.xp || 0) + amount;
+                    let newLvl = getLevelInfo(newXp);
+
+                    let updates = { xp: newXp };
+                    if (newLvl.name !== getLevelInfo(uData.xp || 0).name) {
+                        updates.levelName = newLvl.name;
+                        updates.maxHp = (uData.maxHp || 100) + newLvl.hp;
+                        updates.hp = updates.maxHp;
+                        updates.atk = (uData.atk || 10) + newLvl.atk;
+                        updates.def = (uData.def || 10) + newLvl.def;
+                        setMsg({title: "恭喜升級！", content: `你的元素等級提升為【${newLvl.name}】！各項屬性大幅提升！`});
+                    }
+                    t.update(userRef, updates);
+                });
+            };
+
+            const drawDailyFortune = () => {
+                const fortunes = [
+                    {element: 'H', name: '氫', desc: '輕盈的一天，適合嘗試新事物！'},
+                    {element: 'Au', name: '金', desc: '財運亨通，去商店看看吧！'},
+                    {element: 'O', name: '氧', desc: '人氣旺盛，助燃你的人際關係！'},
+                    {element: 'Fe', name: '鐵', desc: '意志堅定，困難都能迎刃而解！'},
+                    {element: 'Ne', name: '氖', desc: '雖然邊緣，但你發出的光芒最獨特。'}
+                ];
+                const pick = fortunes[Math.floor(Math.random() * fortunes.length)];
+                setFortuneResult(pick);
+            };
+
+            const acknowledgeNotification = async () => {
+                if(pkNotification) {
+                    await window.firebaseModules.deleteDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'public', 'data', 'notifications', pkNotification.id));
+                    setPkNotification(null);
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto pb-20">
+                    <div className="glass-panel p-4 mb-4 sticky top-2 z-40">
+                        <div className="flex items-center gap-4">
+                            <img src={currentUser.avatar} className="w-16 h-16 rounded-full border-2 border-blue-500 bg-white p-1 object-cover" />
+                            <div className="flex-1">
+                                <div className="flex justify-between items-end mb-1">
+                                    <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                                        <span className="element-badge text-lg">{currentUser.levelName}</span>
+                                        {currentUser.nickname || currentUser.name}
+                                        <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600">Lv.{Math.floor(currentUser.xp/100)}</span>
+                                    </h2>
+                                    <div className="text-yellow-600 font-bold bg-yellow-50 px-2 py-1 rounded border border-yellow-200"><i className="fas fa-coins"></i> {currentUser.gold}</div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-xs font-bold text-white text-center">
+                                    <div className="bg-red-500 rounded p-1 relative overflow-hidden shadow-sm" title="生命值">
+                                        <span className="relative z-10 drop-shadow-md">HP {currentUser.hp}/{currentUser.maxHp}</span>
+                                        <div className="absolute top-0 left-0 h-full bg-red-700 opacity-30" style={{width: `${(currentUser.hp/currentUser.maxHp)*100}%`}}></div>
+                                    </div>
+                                    <div className="bg-orange-500 rounded p-1 shadow-sm">ATK {currentUser.atk}</div>
+                                    <div className="bg-indigo-500 rounded p-1 shadow-sm">DEF {currentUser.def}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-2 mb-4 px-2">
+                        <button onClick={()=>setView('home')} className={`p-3 rounded-xl font-bold transition flex flex-col items-center justify-center gap-1 ${view==='home'?'bg-blue-600 text-white shadow-lg scale-105':'glass-panel text-slate-500 hover:bg-white'}`}><i className="fas fa-home text-lg"></i><span className="text-xs">首頁</span></button>
+                        <button onClick={()=>setView('shop')} className={`p-3 rounded-xl font-bold transition flex flex-col items-center justify-center gap-1 ${view==='shop'?'bg-blue-600 text-white shadow-lg scale-105':'glass-panel text-slate-500 hover:bg-white'}`}><i className="fas fa-store text-lg"></i><span className="text-xs">商店</span></button>
+                        <button onClick={()=>setView('inventory')} className={`p-3 rounded-xl font-bold transition flex flex-col items-center justify-center gap-1 ${view==='inventory'?'bg-blue-600 text-white shadow-lg scale-105':'glass-panel text-slate-500 hover:bg-white'}`}><i className="fas fa-box text-lg"></i><span className="text-xs">物品</span></button>
+                        <button onClick={()=>setView('lobby')} className={`p-3 rounded-xl font-bold transition flex flex-col items-center justify-center gap-1 ${view==='lobby'?'bg-blue-600 text-white shadow-lg scale-105':'glass-panel text-slate-500 hover:bg-white'}`}><i className="fas fa-users text-lg"></i><span className="text-xs">大廳</span></button>
+                        <button onClick={()=>setView('rank')} className={`p-3 rounded-xl font-bold transition flex flex-col items-center justify-center gap-1 ${view==='rank'?'bg-blue-600 text-white shadow-lg scale-105':'glass-panel text-slate-500 hover:bg-white'}`}><i className="fas fa-trophy text-lg"></i><span className="text-xs">排行</span></button>
+                    </div>
+
+                    <div className="fade-in px-2">
+                        {view === 'home' && (
+                            <div className="space-y-4">
+                                <div className="glass-panel p-4 text-center cursor-pointer hover:bg-purple-50 border border-transparent hover:border-purple-300 transition" onClick={drawDailyFortune}>
+                                    <div className="flex items-center justify-center gap-2 text-purple-600 font-bold text-lg mb-1">
+                                        <i className="fas fa-star"></i> 每日元素占卜
+                                    </div>
+                                    <p className="text-xs text-slate-500">測測今天的運勢與幸運元素！</p>
+                                </div>
+
+                                <div className="glass-panel p-6 text-center cursor-pointer hover:bg-yellow-50/80 border border-transparent hover:border-yellow-400 transition group" onClick={()=>{
+                                    if(currentUser.dailyQuizCount >= 1) return setMsg({title:"提示", content:"今日答題次數已用完！明天再來吧！"});
+                                    setQuizModal(true);
+                                }}>
+                                    <div className="text-5xl mb-3 text-yellow-500 group-hover:scale-110 transition"><i className="fas fa-brain"></i></div>
+                                    <h3 className="text-xl font-bold mb-1 text-slate-800">答題賺金幣</h3>
+                                    <p className="text-slate-500 text-sm">每日限一次 (3題)</p>
+                                    {currentUser.dailyQuizCount >= 1 && <div className="text-red-500 font-bold text-xs mt-2 bg-red-100 inline-block px-2 py-1 rounded">已完成</div>}
+                                </div>
+
+                                <div className="glass-panel p-6 flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">我的資料</h3>
+                                        <p className="text-sm text-slate-500">座號: {currentUser.seat} | 愛心: <span className="text-pink-500 font-bold">{currentUser.hearts}</span></p>
+                                        <p className="text-xs text-slate-400 mt-1">生涯答對率: {currentUser.totalQuizQuestions > 0 ? Math.round((currentUser.totalQuizCorrect/currentUser.totalQuizQuestions)*100) : 0}%</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>setView('profile')} className="bg-slate-100 px-3 py-1 rounded hover:bg-slate-200 text-sm font-bold text-slate-600">修改設定</button>
+                                        <button onClick={onLogout} className="bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 text-sm font-bold">登出</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'shop' && <ShopView user={currentUser} db={db} classId={classId} setMsg={setMsg} />}
+                        {view === 'inventory' && <InventoryView user={currentUser} db={db} classId={classId} setMsg={setMsg} />}
+                        {view === 'lobby' && <LobbyView user={currentUser} db={db} classId={classId} setMsg={setMsg} />}
+                        {view === 'rank' && <LeaderboardView db={db} currentUser={currentUser} isTeacherMode={false} />}
+                        {view === 'profile' && <ProfileSettings user={currentUser} db={db} classId={classId} setMsg={setMsg} />}
+                    </div>
+
+                    {msg && <Modal title={msg.title} onClose={()=>setMsg(null)} footer={<button onClick={()=>setMsg(null)} className="bg-blue-600 text-white px-4 py-2 rounded font-bold">確定</button>}>{msg.content}</Modal>}
+
+                    {quizModal && <QuizModal user={currentUser} db={db} classId={classId} onClose={()=>setQuizModal(false)} onComplete={addExp} />}
+
+                    {/* PK Logic */}
+                    {pkModal && <PKDefenderModal user={currentUser} pkData={pkModal} db={db} classId={classId} onComplete={() => setPkModal(null)} />}
+                    {pkNotification && (
+                        <Modal title="⚔️ PK 戰報" onClose={acknowledgeNotification}>
+                            <div className="text-center space-y-4">
+                                <p className="text-lg font-bold">{pkNotification.message}</p>
+                                <button onClick={acknowledgeNotification} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">我知道了</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {fortuneResult && (
+                        <Modal title="✨ 今日運勢 ✨" onClose={()=>setFortuneResult(null)}>
+                            <div className="text-center p-4">
+                                <div className="text-6xl font-black text-slate-800 mb-2 font-serif">{fortuneResult.element}</div>
+                                <h3 className="text-2xl font-bold text-purple-600 mb-4">{fortuneResult.name}</h3>
+                                <p className="text-lg text-slate-600 bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                    {fortuneResult.desc}
+                                </p>
+                                <button onClick={()=>setFortuneResult(null)} className="mt-6 bg-purple-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-purple-700">收下祝福</button>
+                            </div>
+                        </Modal>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Sub-Components (Shop, Inventory, Lobby, Quiz, PK) ---
+
+        const ShopView = ({ user, db, classId, setMsg }) => {
+            const [coupons, setCoupons] = useState([]);
+            useEffect(() => {
+                const q = window.firebaseModules.query(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'coupons'));
+                window.firebaseModules.getDocs(q).then(snap => setCoupons(snap.docs.map(d=>({id: d.id, ...d.data()}))));
+            }, []);
+
+            const buyItem = async (item) => {
+                if (user.gold < item.cost) return setMsg({title:"餘額不足", content:"你的金幣不夠購買此商品。"});
+                const { doc, runTransaction, arrayUnion } = window.firebaseModules;
+                const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
+                try {
+                    await runTransaction(db, async (t) => {
+                        const uDoc = await t.get(userRef);
+                        const uData = uDoc.data();
+                        if (uData.gold < item.cost) throw "Gold not enough";
+                        t.update(userRef, {
+                            gold: uData.gold - item.cost,
+                            inventory: arrayUnion({...item, uid: Date.now()})
+                        });
+                    });
+                    setMsg({title:"購買成功", content:`已購買 ${item.name}，請至物品欄查看。`});
+                } catch(e) { console.error(e); }
+            };
+
+            return (
+                <div className="grid grid-cols-2 gap-4">
+                    {coupons.length === 0 && <div className="col-span-2 text-center text-white/50 py-10">商店空空如也...</div>}
+                    {coupons.map(item => (
+                        <div key={item.id} className="rpg-card p-4 flex flex-col justify-between">
+                            <div>
+                                <h4 className="font-bold text-lg mb-1 text-slate-800">{item.name}</h4>
+                                <p className="text-xs text-slate-500 mb-2 h-8 overflow-hidden">{item.desc || "無描述"}</p>
+                            </div>
+                            <div className="flex justify-between items-center mt-2">
+                                <span className="text-yellow-600 font-black"><i className="fas fa-coins"></i> {item.cost || 0}</span>
+                                <button onClick={()=>buyItem(item)} className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 font-bold shadow">購買</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const InventoryView = ({ user, db, classId, setMsg }) => {
+            const useItem = async (item) => {
+                const { doc, runTransaction, arrayRemove } = window.firebaseModules;
+                const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
+                try {
+                    await runTransaction(db, async (t) => {
+                        const uDoc = await t.get(userRef);
+                        const uData = uDoc.data();
+
+                        let updates = { inventory: arrayRemove(item) };
+                        let effectMsg = "";
+
+                        if (item.hp) {
+                            const boost = parseInt(item.hp);
+                            updates.maxHp = (uData.maxHp || 100) + boost;
+                            updates.hp = (uData.hp || 0) + boost;
+                            effectMsg += `生命上限+${boost} (並恢復) `;
+                        }
+                        if (item.atk) {
+                            const boost = parseInt(item.atk);
+                            updates.atk = (uData.atk || 0) + boost;
+                            effectMsg += `攻擊力永久+${boost} `;
+                        }
+                        if (item.def) {
+                            const boost = parseInt(item.def);
+                            updates.def = (uData.def || 0) + boost;
+                            effectMsg += `防禦力永久+${boost} `;
+                        }
+
+                        t.update(userRef, updates);
+                        setMsg({title: "使用成功", content: `你使用了 ${item.name}！效果：${effectMsg}`});
+                    });
+                } catch(e) { console.error(e); }
+            };
+
+            const inventory = user.inventory || [];
+            return (
+                <div className="space-y-2">
+                    {inventory.length === 0 && <div className="text-center text-white/50 py-10">背包裡沒有東西</div>}
+                    {inventory.map((item, idx) => (
+                        <div key={idx} className="rpg-card p-3 flex justify-between items-center">
+                            <div>
+                                <h4 className="font-bold text-slate-800">{item.name}</h4>
+                                <div className="text-xs text-slate-500 font-mono">
+                                    {item.hp > 0 && <span className="mr-2 text-red-500">HP+{item.hp}</span>}
+                                    {item.atk > 0 && <span className="mr-2 text-orange-500">ATK+{item.atk}</span>}
+                                    {item.def > 0 && <span className="mr-2 text-indigo-500">DEF+{item.def}</span>}
+                                </div>
+                            </div>
+                            <button onClick={()=>useItem(item)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm font-bold shadow hover:bg-blue-700">使用</button>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const LobbyView = ({ user, db, classId, setMsg }) => {
+            const [users, setUsers] = useState([]);
+            const [filterClass, setFilterClass] = useState("all");
+            const [selectedUser, setSelectedUser] = useState(null);
+            const [attackerPKState, setAttackerPKState] = useState(null);
+
+            useEffect(() => {
+                const fetchAll = async () => {
+                    let allUsers = [];
+                    for (let c of CLASSES) {
+                        if(!db) continue;
+                        const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
+                        const snap = await window.firebaseModules.getDocs(q);
+                        snap.forEach(d => allUsers.push({...d.data(), class: c, id: d.id}));
+                    }
+                    setUsers(allUsers);
+                };
+                if(db) fetchAll();
+            }, [db]);
+
+            const filteredUsers = filterClass === 'all' ? users : users.filter(u => u.class === filterClass);
+
+            const sendHeart = async (targetUser) => {
+                if(targetUser.id === user.id) return setMsg({title:"提示", content:"不能送愛心給自己喔！(自戀狂 XD)"});
+
+                const { doc, updateDoc, increment } = window.firebaseModules;
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'classes', targetUser.class, 'users', targetUser.id), {
+                    hearts: increment(1)
+                });
+                setMsg({title:"愛心發送", content:`你送了一顆愛心給 ${targetUser.nickname || "神秘人"}！`});
+                setSelectedUser(null);
+            };
+
+            const startPK = async (targetUser) => {
+                if (user.hp <= 0) return setMsg({title:"無法戰鬥", content:"你的生命值歸零，無法發起 PK！"});
+                if (user.atk <= targetUser.def) return setMsg({title:"實力差距", content:"你無法攻擊他 (你的攻擊力 <= 對方防禦力)"});
+
+                const qRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
+                const qSnap = await window.firebaseModules.getDocs(qRef);
+                if(qSnap.empty) return setMsg({title:"錯誤", content:"目前沒有題庫，無法 PK"});
+
+                const questions = qSnap.docs.map(d=>d.data());
+                const randomQ = questions[Math.floor(Math.random() * questions.length)];
+
+                setSelectedUser(null);
+                setAttackerPKState({ targetUser, question: randomQ });
+            };
+
+            return (
+                <div>
+                    <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide">
+                        <button onClick={()=>setFilterClass('all')} className={`px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap transition ${filterClass==='all'?'bg-blue-500 text-white shadow':'glass-panel text-slate-500'}`}>全部</button>
+                        {CLASSES.map(c => (
+                            <button key={c} onClick={()=>setFilterClass(c)} className={`px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap transition ${filterClass===c?'bg-blue-500 text-white shadow':'glass-panel text-slate-500'}`}>{c}班</button>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3">
+                        {filteredUsers.map(u => (
+                            <div key={u.id} onClick={()=>setSelectedUser(u)} className="glass-panel p-2 flex flex-col items-center cursor-pointer hover:bg-white/80 transition transform hover:scale-105">
+                                <img src={u.avatar} className="w-10 h-10 rounded-full bg-white border border-slate-200 object-cover" />
+                                <div className="text-xs truncate font-bold mt-1 text-slate-700 w-full text-center">{u.nickname || "神秘人"}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {selectedUser && (
+                        <Modal title="玩家資訊" onClose={()=>setSelectedUser(null)}>
+                            <div className="text-center">
+                                <img src={selectedUser.avatar} className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-white shadow object-cover bg-white" />
+                                <h3 className="text-xl font-bold mb-1">{selectedUser.nickname || "神秘人"}</h3>
+                                <div className="flex justify-center gap-4 text-sm mb-4">
+                                    <span className="text-red-500 font-bold">HP {selectedUser.hp}</span>
+                                    <span className="text-orange-500 font-bold">ATK {selectedUser.atk}</span>
+                                    <span className="text-blue-500 font-bold">DEF {selectedUser.def}</span>
+                                </div>
+                                <div className="flex justify-center gap-2">
+                                    <button onClick={()=>sendHeart(selectedUser)} className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600"><i className="fas fa-heart"></i> 送愛心</button>
+                                    {selectedUser.id !== user.id && (
+                                        <button onClick={()=>startPK(selectedUser)} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"><i className="fas fa-khanda"></i> 來 PK</button>
+                                    )}
+                                </div>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {attackerPKState && (
+                        <PKAttackerModal
+                            user={user}
+                            target={attackerPKState.targetUser}
+                            question={attackerPKState.question}
+                            db={db}
+                            onClose={()=>setAttackerPKState(null)}
+                            setMsg={setMsg}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        const QuizModal = ({ user, db, classId, onClose, onComplete }) => {
+            const [questions, setQuestions] = useState([]);
+            const [currentQ, setCurrentQ] = useState(0);
+            const [results, setResults] = useState([]);
+            const [finished, setFinished] = useState(false);
+            const [errorMsg, setErrorMsg] = useState(null);
+
+            useEffect(() => {
+                const fetchQ = async () => {
+                    const qRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
+                    const snap = await window.firebaseModules.getDocs(qRef);
+                    const all = snap.docs.map(d=>d.data());
+                    if(all.length < 3) {
+                        setErrorMsg("題庫數量不足 3 題，請老師先上傳題目！");
+                        return;
+                    }
+                    const shuffled = all.sort(() => 0.5 - Math.random()).slice(0, 3);
+                    setQuestions(shuffled);
+                };
+                fetchQ();
+            }, []);
+
+            const submitAnswer = (inputAnswer) => {
+                const q = questions[currentQ];
+                const isCorrect = inputAnswer.trim() === (q.answer || "").trim();
+
+                const reward = isCorrect ? {
+                    gold: parseInt(q.gold) || 0,
+                    hp: parseInt(q.hp) || 0,
+                    atk: parseInt(q.atk) || 0,
+                    def: parseInt(q.def) || 0
+                } : null;
+
+                // Log Quiz History to DB
+                const { addDoc, collection } = window.firebaseModules;
+                addDoc(collection(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id, 'quiz_history'), {
+                    question: q.question,
+                    isCorrect: isCorrect,
+                    timestamp: Date.now()
+                });
+
+                const newResults = [...results, { correct: isCorrect, reward }];
+                setResults(newResults);
+
+                if (currentQ < 2) {
+                    setCurrentQ(currentQ + 1);
+                } else {
+                    finishQuiz(newResults);
+                }
+            };
+
+            const finishQuiz = async (finalResults) => {
+                setFinished(true);
+                let totalGold = 0, totalHp = 0, totalAtk = 0, totalDef = 0;
+                let correctCount = 0;
+
+                finalResults.forEach(r => {
+                    if(r.correct) {
+                        correctCount++;
+                        if(r.reward) {
+                            totalGold += r.reward.gold;
+                            totalHp += r.reward.hp;
+                            totalAtk += r.reward.atk;
+                            totalDef += r.reward.def;
+                        }
+                    }
+                });
+
+                const { doc, runTransaction } = window.firebaseModules;
+                const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
+
+                await runTransaction(db, async (t) => {
+                    const uDoc = await t.get(userRef);
+                    const d = uDoc.data();
+                    t.update(userRef, {
+                        gold: (d.gold||0) + totalGold,
+                        maxHp: (d.maxHp||100) + totalHp,
+                        hp: Math.min((d.hp||0) + totalHp, (d.maxHp||100) + totalHp),
+                        atk: (d.atk||0) + totalAtk,
+                        def: (d.def||0) + totalDef,
+                        dailyQuizCount: (d.dailyQuizCount||0) + 1,
+                        totalQuizQuestions: (d.totalQuizQuestions || 0) + 3,
+                        totalQuizCorrect: (d.totalQuizCorrect || 0) + correctCount
+                    });
+                });
+                onComplete(30);
+            };
+
+            if (errorMsg) return (
+                <Modal title="提示" onClose={onClose}>
+                    <div className="text-center p-4">
+                        <i className="fas fa-exclamation-circle text-4xl text-orange-500 mb-2"></i>
+                        <p>{errorMsg}</p>
+                        <button onClick={onClose} className="mt-4 bg-gray-500 text-white px-4 py-2 rounded">關閉</button>
+                    </div>
+                </Modal>
+            );
+
+            if (questions.length === 0) return <Loading />;
+
+            if (finished) {
+                return (
+                    <Modal title="答題完成！" onClose={onClose}>
+                        <div className="text-center">
+                            <h3 className="text-2xl font-bold mb-4 text-blue-600">獲得經驗值 +30</h3>
+                            <div className="bg-yellow-50 p-4 rounded mb-4 text-left">
+                                <p className="font-bold mb-2">答對題數: {results.filter(r=>r.correct).length} / 3</p>
+                                <ul className="text-sm text-gray-600 space-y-1">
+                                    {results.map((r, i) => (
+                                        <li key={i} className={r.correct ? "text-green-600" : "text-red-400"}>
+                                            第 {i+1} 題: {r.correct ? "正確" : "錯誤"}
+                                            {r.correct && r.reward && (
+                                                <span className="ml-2 text-xs bg-white border px-1 rounded">
+                                                    {r.reward.gold>0 && `金幣+${r.reward.gold} `}
+                                                    {r.reward.hp>0 && `HP+${r.reward.hp} `}
+                                                    {r.reward.atk>0 && `ATK+${r.reward.atk} `}
+                                                    {r.reward.def>0 && `DEF+${r.reward.def}`}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <button onClick={onClose} className="bg-blue-600 text-white px-6 py-2 rounded font-bold shadow-lg hover:bg-blue-700">太棒了</button>
+                        </div>
+                    </Modal>
+                );
+            }
+
+            const q = questions[currentQ];
+            return (
+                <Modal title={`每日答題 (${currentQ+1}/3)`}>
+                    <div className="space-y-4">
+                        <p className="font-bold text-lg bg-slate-50 p-3 rounded border border-slate-200">{q.question}</p>
+                        <input id="qInput" className="w-full p-3 border-2 border-blue-100 rounded-lg focus:border-blue-500 outline-none" placeholder="輸入答案..." />
+                        <button onClick={()=>{
+                            const val = document.getElementById('qInput').value;
+                            if(!val) return;
+                            document.getElementById('qInput').value = "";
+                            submitAnswer(val);
+                        }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md">送出答案</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        const PKAttackerModal = ({ user, target, question, db, onClose, setMsg }) => {
+            const [answer, setAnswer] = useState("");
+            const submitAttack = async () => {
+                if(!answer) return;
+                const isCorrect = answer.trim() === question.answer.trim();
+                const { addDoc, collection } = window.firebaseModules;
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks'), {
+                    attackerId: user.id,
+                    attackerClass: user.class,
+                    defenderId: target.id,
+                    defenderClass: target.class,
+                    question: question,
+                    attackerCorrect: isCorrect,
+                    status: 'active',
+                    timestamp: Date.now()
+                });
+                onClose();
+                setMsg({title: "PK 發起成功", content: "你已經完成攻擊！等待對方回應後將自動結算結果。"});
+            };
+
+            return (
+                <Modal title="發起 PK 攻擊！">
+                    <div className="space-y-4">
+                        <div className="text-center text-sm text-gray-500 mb-2">對手: {target.nickname || "神秘人"}</div>
+                        <p className="font-bold text-lg">{question.question}</p>
+                        <input value={answer} onChange={e=>setAnswer(e.target.value)} className="w-full p-2 border rounded" placeholder="輸入答案..." />
+                        <button onClick={submitAttack} className="w-full bg-red-600 text-white py-2 rounded font-bold">發動攻擊</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        const PKDefenderModal = ({ user, pkData, db, classId, onComplete }) => {
+            const [answer, setAnswer] = useState("");
+            const [result, setResult] = useState(null);
+
+            const resolvePK = async () => {
+                const defenderCorrect = answer.trim() === pkData.question.answer.trim();
+                const attackerCorrect = pkData.attackerCorrect;
+                const qRewards = pkData.question;
+                let defenderLog = "";
+                let attackerLog = "";
+
+                const { doc, runTransaction, addDoc, collection } = window.firebaseModules;
+                const defenderRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
+                const attClass = pkData.attackerClass || classId;
+                const attackerRef = doc(db, 'artifacts', APP_ID, 'classes', attClass, 'users', pkData.attackerId);
+
+                try {
+                    await runTransaction(db, async (t) => {
+                        const dDoc = await t.get(defenderRef);
+                        const aDoc = await t.get(attackerRef);
+
+                        if(!aDoc.exists()) {
+                            t.delete(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id));
+                            throw "Attacker not found";
+                        }
+
+                        const dData = dDoc.data();
+                        const aData = aDoc.data();
+
+                        let dUpdates = { xp: (dData.xp||0) + 10 };
+                        let aUpdates = { xp: (aData.xp||0) + 10 };
+
+                        if (attackerCorrect && defenderCorrect) {
+                            dUpdates.gold = (dData.gold||0) + parseInt(qRewards.gold);
+                            dUpdates.maxHp = (dData.maxHp||100) + parseInt(qRewards.hp);
+                            dUpdates.hp = (dData.hp||0) + parseInt(qRewards.hp);
+                            dUpdates.atk = (dData.atk||0) + parseInt(qRewards.atk);
+                            dUpdates.def = (dData.def||0) + parseInt(qRewards.def);
+
+                            aUpdates.gold = (aData.gold||0) + parseInt(qRewards.gold);
+                            aUpdates.maxHp = (aData.maxHp||100) + parseInt(qRewards.hp);
+                            aUpdates.hp = (aData.hp||0) + parseInt(qRewards.hp);
+                            aUpdates.atk = (aData.atk||0) + parseInt(qRewards.atk);
+                            aUpdates.def = (aData.def||0) + parseInt(qRewards.def);
+                            defenderLog = "平手！雙方都答對，各自獲得獎勵！";
+                            attackerLog = `平手！你與 ${dData.nickname||"神秘人"} 都答對了。`;
+                        }
+                        else if (attackerCorrect && !defenderCorrect) {
+                            aUpdates.gold = (aData.gold||0) + parseInt(qRewards.gold)*2;
+                            aUpdates.maxHp = (aData.maxHp||100) + parseInt(qRewards.hp)*2;
+                            aUpdates.hp = (aData.hp||0) + parseInt(qRewards.hp)*2;
+                            aUpdates.atk = (aData.atk||0) + parseInt(qRewards.atk)*2;
+                            aUpdates.def = (aData.def||0) + parseInt(qRewards.def)*2;
+
+                            dUpdates.hp = Math.max(0, (dData.hp||0) - 100);
+                            if (dUpdates.hp === 0) dUpdates.xp = dData.xp;
+                            defenderLog = "戰敗... 對方答對了，你答錯了。生命值 -100。";
+                            attackerLog = `勝利！${dData.nickname||"神秘人"} 答錯了，你獲得雙倍獎勵！`;
+                        }
+                        else if (!attackerCorrect && defenderCorrect) {
+                            dUpdates.gold = (dData.gold||0) + parseInt(qRewards.gold)*2;
+                            dUpdates.maxHp = (dData.maxHp||100) + parseInt(qRewards.hp)*2;
+                            dUpdates.hp = (dData.hp||0) + parseInt(qRewards.hp)*2;
+                            dUpdates.atk = (dData.atk||0) + parseInt(qRewards.atk)*2;
+                            dUpdates.def = (dData.def||0) + parseInt(qRewards.def)*2;
+
+                            aUpdates.hp = Math.max(0, (aData.hp||0) - 100);
+                            if (aUpdates.hp === 0) aUpdates.xp = aData.xp;
+                            defenderLog = "勝利！你答對了，對方答錯了。獲得雙倍獎勵！";
+                            attackerLog = `戰敗... ${dData.nickname||"神秘人"} 答對了，你答錯了。`;
+                        }
+                        else {
+                            dUpdates.hp = Math.max(0, (dData.hp||0) - 100);
+                            aUpdates.hp = Math.max(0, (aData.hp||0) - 100);
+                            if (dUpdates.hp === 0) dUpdates.xp = dData.xp;
+                            if (aUpdates.hp === 0) aUpdates.xp = aData.xp;
+                            defenderLog = "慘烈... 雙方都答錯，皆扣除 100 生命值。";
+                            attackerLog = `慘烈... 你與 ${dData.nickname||"神秘人"} 都答錯了。`;
+                        }
+
+                        t.update(defenderRef, dUpdates);
+                        t.update(attackerRef, aUpdates);
+                        const pkRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id);
+                        t.delete(pkRef);
+                    });
+
+                    // Send notification to attacker
+                    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'), {
+                        targetId: pkData.attackerId,
+                        message: attackerLog,
+                        timestamp: Date.now()
+                    });
+
+                    setResult(defenderLog);
+                } catch(e) {
+                    console.error(e);
+                    if(e === "Attacker not found") setResult("對手似乎消失了... PK 取消");
+                }
+            };
+
+            return (
+                <div className="modal-overlay">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-bounce-short border-4 border-red-500">
+                        <h3 className="text-2xl font-bold text-center text-red-600 mb-2">⚔️ 遭受 PK 攻擊！</h3>
+                        {!result ? (
+                            <div className="space-y-4">
+                                <p className="text-center text-gray-500">來自 {pkData.attackerId.split('-')[1]} 號的挑戰</p>
+                                <div className="bg-gray-100 p-4 rounded font-bold">{pkData.question.question}</div>
+                                <input value={answer} onChange={e=>setAnswer(e.target.value)} className="w-full p-2 border rounded" placeholder="快輸入答案防禦！" />
+                                <button onClick={resolvePK} className="w-full bg-red-600 text-white py-3 rounded font-bold text-lg">反擊</button>
+                            </div>
+                        ) : (
+                            <div className="text-center space-y-4">
+                                <div className="text-xl font-bold">{result}</div>
+                                <button onClick={onComplete} className="w-full bg-gray-600 text-white py-2 rounded">關閉</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const ProfileSettings = ({ user, db, classId, setMsg }) => {
+            const [pwd, setPwd] = useState("");
+            const [nickname, setNickname] = useState(user.nickname || "");
+            const [avatar, setAvatar] = useState(user.avatar || AVATARS[0]);
+            const [customAvatar, setCustomAvatar] = useState("");
+            const [gender, setGender] = useState(user.gender || "boy");
+
+            const finalAvatar = customAvatar || avatar;
+
+            const handleUpdate = async () => {
+                let updates = {};
+                if(pwd) updates.password = pwd;
+                if(nickname) updates.nickname = nickname;
+                if(finalAvatar) updates.avatar = finalAvatar;
+                if(gender) updates.gender = gender;
+
+                await window.firebaseModules.updateDoc(
+                    window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id),
+                    updates
+                );
+                setPwd("");
+                setMsg({title:"成功", content:"個人資料修改完成！"});
+            };
+
+            return (
+                <div className="glass-panel p-6">
+                    <h3 className="font-bold text-lg mb-4 text-slate-800 border-b pb-2">修改個人檔案</h3>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">暱稱</label>
+                            <input value={nickname} onChange={e=>setNickname(e.target.value)} className="w-full p-2 border rounded" placeholder="輸入新暱稱" />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">性別</label>
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="p_gender" value="boy" checked={gender==='boy'} onChange={()=>setGender('boy')} /> 男生</label>
+                                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="p_gender" value="girl" checked={gender==='girl'} onChange={()=>setGender('girl')} /> 女生</label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">更換頭像</label>
+                            <div className="flex gap-2 mb-2 flex-wrap bg-white/50 p-2 rounded justify-center">
+                                {AVATARS.map(a => (
+                                    <img key={a} src={a} onClick={()=>setAvatar(a)} className={`w-12 h-12 rounded-full avatar-option ${avatar===a && !customAvatar ? 'selected' : ''}`} />
+                                ))}
+                            </div>
+                            <input value={customAvatar} onChange={e=>setCustomAvatar(e.target.value)} className="w-full p-2 border rounded text-xs" placeholder="或貼上圖片網址..." />
+                        </div>
+
+                        <div className="pt-4 border-t">
+                            <label className="block text-xs font-bold text-slate-500 mb-1">修改密碼 (留空則不修改)</label>
+                            <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full p-2 border rounded" placeholder="輸入新密碼" />
+                        </div>
+
+                        <button onClick={handleUpdate} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 mt-2">儲存修改</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const EditStatsModal = ({ student, onClose, onSave }) => {
+            const [stats, setStats] = useState({ hp: student.hp, maxHp: student.maxHp, atk: student.atk, def: student.def, gold: student.gold });
+
+            return (
+                <Modal title={`調整數值: ${student.name}`} onClose={onClose}>
+                    <div className="space-y-3 p-1">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="text-xs font-bold text-slate-500">當前生命 (HP)</label><input type="number" value={stats.hp} onChange={e=>setStats({...stats, hp: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">最大生命 (Max HP)</label><input type="number" value={stats.maxHp} onChange={e=>setStats({...stats, maxHp: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="text-xs font-bold text-slate-500">攻擊力 (ATK)</label><input type="number" value={stats.atk} onChange={e=>setStats({...stats, atk: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">防禦力 (DEF)</label><input type="number" value={stats.def} onChange={e=>setStats({...stats, def: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500">金幣 (Gold)</label><input type="number" value={stats.gold} onChange={e=>setStats({...stats, gold: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                        <button onClick={()=>onSave(stats)} className="w-full bg-blue-600 text-white py-3 mt-4 rounded-lg font-bold shadow hover:bg-blue-700">儲存變更</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        const QuizHistoryModal = ({ student, db, classId, onClose }) => {
+            const [logs, setLogs] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                const fetchLogs = async () => {
+                    try {
+                        const q = window.firebaseModules.query(
+                            window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', classId, 'users', student.id, 'quiz_history'),
+                            window.firebaseModules.orderBy('timestamp', 'desc'),
+                            window.firebaseModules.limit(20)
+                        );
+                        const snap = await window.firebaseModules.getDocs(q);
+
+                        if (snap.empty) {
+                            setLogs([]);
+                        } else {
+                            setLogs(snap.docs.map(d => d.data()));
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch history", e);
+                        setError("無法讀取資料，可能是網路問題。");
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                fetchLogs();
+            }, [student.id]);
+
+            return (
+                <Modal title={`${student.name} 的答題紀錄 (最近20筆)`} onClose={onClose}>
+                    {loading ? (
+                        <div className="flex flex-col items-center py-8">
+                            <i className="fas fa-circle-notch fa-spin text-3xl text-blue-500 mb-2"></i>
+                            <span className="text-slate-500 text-sm">讀取紀錄中...</span>
+                        </div>
+                    ) : error ? (
+                        <div className="text-center text-red-500 py-8">{error}</div>
+                    ) : logs.length === 0 ? (
+                        <div className="text-center text-slate-500 py-8">
+                            <i className="far fa-folder-open text-3xl mb-2 opacity-50"></i>
+                            <p>這位同學還沒有答題紀錄哦</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 text-sm max-h-[60vh] overflow-y-auto">
+                            {logs.map((log, i) => (
+                                <div key={i} className={`p-3 border rounded-lg flex justify-between items-center ${log.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                    <div className="flex-1">
+                                        <div className="font-bold text-slate-800 mb-1">{log.question}</div>
+                                        <div className="text-xs text-slate-400">{new Date(log.timestamp).toLocaleString()}</div>
+                                    </div>
+                                    <div className={`font-bold ml-2 ${log.isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                                        {log.isCorrect ? '正確' : '錯誤'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <div className="mt-4 text-right">
+                        <button onClick={onClose} className="text-slate-500 hover:text-slate-700 text-sm underline">關閉視窗</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        // --- Quiz Analysis View ---
+        const QuizAnalysisView = ({ students }) => {
+            const activeStudents = useMemo(() => students.filter(s => (s.totalQuizQuestions || 0) > 0), [students]);
+
+            const totalQuestions = activeStudents.reduce((acc, s) => acc + (s.totalQuizQuestions || 0), 0);
+            const totalCorrect = activeStudents.reduce((acc, s) => acc + (s.totalQuizCorrect || 0), 0);
+            const classAccuracy = totalQuestions > 0 ? ((totalCorrect / totalQuestions) * 100).toFixed(1) : 0;
+
+            const strugglingStudents = useMemo(() => {
+                return activeStudents
+                    .filter(s => {
+                        const acc = (s.totalQuizCorrect || 0) / (s.totalQuizQuestions || 1);
+                        return acc < 0.6;
+                    })
+                    .sort((a,b) => parseInt(a.seat) - parseInt(b.seat));
+            }, [activeStudents]);
+
+            const topStudents = useMemo(() => {
+                return activeStudents
+                    .filter(s => {
+                        const acc = (s.totalQuizCorrect || 0) / (s.totalQuizQuestions || 1);
+                        return acc >= 0.85 && s.totalQuizQuestions > 5;
+                    })
+                    .sort((a,b) => {
+                        const accA = (a.totalQuizCorrect||0)/(a.totalQuizQuestions||1);
+                        const accB = (b.totalQuizCorrect||0)/(b.totalQuizQuestions||1);
+                        return accB - accA;
+                    });
+            }, [activeStudents]);
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                            <div className="relative z-10">
+                                <h4 className="text-blue-100 font-bold mb-2 uppercase tracking-widest text-xs">班級平均答對率</h4>
+                                <div className="text-5xl font-black">{classAccuracy}%</div>
+                                <div className="mt-2 text-sm text-blue-200">
+                                    <i className="fas fa-check-circle"></i> 總答對題數: {totalCorrect}
+                                </div>
+                            </div>
+                            <i className="fas fa-chart-line absolute right-4 bottom-4 text-9xl text-white opacity-10"></i>
+                        </div>
+                        <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                            <div className="relative z-10">
+                                <h4 className="text-purple-100 font-bold mb-2 uppercase tracking-widest text-xs">總答題熱度</h4>
+                                <div className="text-5xl font-black">{totalQuestions}</div>
+                                <div className="mt-2 text-sm text-purple-200">
+                                    <i className="fas fa-user-check"></i> 參與人數: {activeStudents.length} / {students.length}
+                                </div>
+                            </div>
+                            <i className="fas fa-fire absolute right-4 bottom-4 text-9xl text-white opacity-10"></i>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm">
+                            <h4 className="font-bold text-red-800 mb-4 flex items-center gap-2 border-b border-red-200 pb-2">
+                                <i className="fas fa-exclamation-circle text-red-500"></i> 需要關注 (答對率 &lt; 60%)
+                            </h4>
+                            {strugglingStudents.length === 0 ? (
+                                <div className="text-center text-slate-400 py-8 text-sm">目前沒有落後的學生，太棒了！</div>
+                            ) : (
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                    {strugglingStudents.map(s => (
+                                        <div key={s.id} className="bg-white p-3 rounded-lg border border-red-100 flex justify-between items-center hover:shadow-sm transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className="font-bold text-slate-700 w-8 text-center">{s.seat}</div>
+                                                <div>
+                                                    <div className="font-bold text-sm text-slate-800">{s.name}</div>
+                                                    <div className="text-xs text-slate-500">{s.totalQuizCorrect} / {s.totalQuizQuestions} 題</div>
+                                                </div>
+                                            </div>
+                                            <div className="font-bold text-red-500 bg-red-50 px-2 py-1 rounded text-sm">
+                                                {Math.round((s.totalQuizCorrect/s.totalQuizQuestions)*100)}%
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm">
+                            <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2 border-b border-emerald-200 pb-2">
+                                <i className="fas fa-medal text-emerald-500"></i> 表現優異 (答對率 &gt; 85%)
+                            </h4>
+                            {topStudents.length === 0 ? (
+                                <div className="text-center text-slate-400 py-8 text-sm">還沒有出現學霸...</div>
+                            ) : (
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                    {topStudents.map((s, idx) => (
+                                        <div key={s.id} className="bg-white p-3 rounded-lg border border-emerald-100 flex justify-between items-center hover:shadow-sm transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`font-black w-6 text-center ${idx===0?'text-yellow-500':idx===1?'text-slate-400':idx===2?'text-orange-700':'text-slate-300'}`}>#{idx+1}</div>
+                                                <div className="font-bold text-slate-700 w-6 text-center">{s.seat}</div>
+                                                <div className="font-bold text-sm text-slate-800">{s.name}</div>
+                                            </div>
+                                            <div className="font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-sm">
+                                                {Math.round((s.totalQuizCorrect/s.totalQuizQuestions)*100)}%
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const TeacherDashboard = ({ db, classId, onLogout }) => {
+            const [tab, setTab] = useState('students');
+            const [students, setStudents] = useState([]);
+            const [questions, setQuestions] = useState([]);
+            const [coupons, setCoupons] = useState([]);
+            const [qInput, setQInput] = useState("");
+            const [cInput, setCInput] = useState("");
+            const [msg, setMsg] = useState(null);
+
+            const [editStudent, setEditStudent] = useState(null);
+            const [historyStudent, setHistoryStudent] = useState(null);
+            const [editItem, setEditItem] = useState(null);
+            const [editType, setEditType] = useState(null);
+            const [goldAmount, setGoldAmount] = useState(100);
+
+            const [resetTargetClass, setResetTargetClass] = useState("all");
+            const [showResetConfirm, setShowResetConfirm] = useState(false);
+            const [resetConfirmCode, setResetConfirmCode] = useState("");
+
+            useEffect(() => {
+                if(!db) return;
+                const unsubS = window.firebaseModules.onSnapshot(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', classId, 'users'),
+                    (snap) => {
+                        const list = [];
+                        snap.forEach(d => list.push({id:d.id, ...d.data()}));
+                        setStudents(list);
+                    });
+                const unsubQ = window.firebaseModules.onSnapshot(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions'),
+                    (snap) => {
+                        const list = [];
+                        snap.forEach(d => list.push({id:d.id, ...d.data()}));
+                        setQuestions(list);
+                    });
+                const unsubC = window.firebaseModules.onSnapshot(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'coupons'),
+                    (snap) => {
+                        const list = [];
+                        snap.forEach(d => list.push({id:d.id, ...d.data()}));
+                        setCoupons(list);
+                    });
+                return () => { unsubS(); unsubQ(); unsubC(); };
+            }, [db]);
+
+            const handleSaveStats = async (newStats) => {
+                if(!editStudent) return;
+                await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', editStudent.id), newStats);
+                setEditStudent(null);
+                setMsg("數值已更新");
+            };
+
+            const sendGold = async (studentId, studentName) => {
+                const amount = parseInt(goldAmount);
+                if(isNaN(amount) || amount === 0) return setMsg("請輸入有效的金幣數量");
+                try {
+                    await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', studentId), {
+                        gold: window.firebaseModules.increment(amount)
+                    });
+                    setMsg(`成功發送 ${amount} 金幣給 ${studentName}`);
+                } catch(e) { console.error(e); setMsg("發送失敗"); }
+            };
+
+            const deleteItem = async (collectionName, id) => {
+                if(!confirm("確定要刪除嗎？")) return;
+                await window.firebaseModules.deleteDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'public', 'data', collectionName, id));
+            };
+
+            const saveItemEdit = async (collectionName, id, data) => {
+                const cleanData = {...data};
+                ['gold', 'hp', 'atk', 'def', 'cost'].forEach(k => { if(cleanData[k] !== undefined) cleanData[k] = parseInt(cleanData[k]) || 0; });
+                await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'public', 'data', collectionName, id), cleanData);
+                setEditItem(null); setEditType(null); setMsg("更新成功");
+            };
+
+            const uploadQuestions = async () => {
+                const lines = qInput.trim().split('\n');
+                const batch = window.firebaseModules.writeBatch(db);
+                const colRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
+                let count = 0;
+                lines.forEach(line => {
+                    const parts = line.split('\t');
+                    if(parts.length < 2) return;
+                    batch.set(window.firebaseModules.doc(colRef), {
+                        question: parts[0], answer: parts[1],
+                        gold: parseInt(parts[2])||10, hp: parseInt(parts[3])||0, atk: parseInt(parts[4])||0, def: parseInt(parts[5])||0,
+                        timestamp: Date.now()
+                    });
+                    count++;
+                });
+                await batch.commit();
+                setMsg(`成功上傳 ${count} 題`); setQInput("");
+            };
+
+            const uploadCoupons = async () => {
+                const lines = cInput.trim().split('\n');
+                const batch = window.firebaseModules.writeBatch(db);
+                const colRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'coupons');
+                let count = 0;
+                lines.forEach(line => {
+                    const parts = line.split('\t');
+                    if(parts.length < 3) return;
+                    batch.set(window.firebaseModules.doc(colRef), {
+                        name: parts[0], desc: parts[1], cost: parseInt(parts[2]),
+                        hp: parseInt(parts[3])||0, atk: parseInt(parts[4])||0, def: parseInt(parts[5])||0
+                    });
+                    count++;
+                });
+                await batch.commit();
+                setMsg(`上傳 ${count} 張兌換券`); setCInput("");
+            };
+
+            const executeReset = async () => {
+                if (resetConfirmCode !== "RESET") {
+                    setMsg("確認碼錯誤，操作取消。");
+                    setShowResetConfirm(false);
+                    return;
+                }
+
+                setShowResetConfirm(false);
+                setMsg("正在刪除資料...請勿關閉視窗");
+
+                try {
+                    const targetName = resetTargetClass === 'all' ? "全校" : `${resetTargetClass}班`;
+                    const classesToReset = resetTargetClass === 'all' ? CLASSES : [resetTargetClass];
+
+                    let allRefs = [];
+
+                    for (let c of classesToReset) {
+                        const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
+                        const snap = await window.firebaseModules.getDocs(q);
+                        snap.forEach(d => allRefs.push(d.ref));
+                    }
+
+                    const chunkSize = 400;
+                    let deletedCount = 0;
+
+                    for (let i = 0; i < allRefs.length; i += chunkSize) {
+                        const chunk = allRefs.slice(i, i + chunkSize);
+                        const batch = window.firebaseModules.writeBatch(db);
+                        chunk.forEach(ref => batch.delete(ref));
+                        await batch.commit();
+                        deletedCount += chunk.length;
+                    }
+
+                    setMsg(`已重置 ${targetName} 共 ${deletedCount} 筆資料。`);
+                } catch(e) {
+                    console.error(e);
+                    setMsg("重置失敗: " + e.message);
+                }
+            };
+
+            return (
+                <div className="max-w-6xl mx-auto p-4">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-3xl font-black text-white drop-shadow-md">老師中控台 ({classId}班)</h1>
+                        <button onClick={onLogout} className="bg-slate-700/80 text-white px-4 py-2 rounded font-bold hover:bg-slate-600 backdrop-blur-sm">登出</button>
+                    </div>
+                    <div className="glass-panel overflow-hidden mb-6 min-h-[600px] flex flex-col">
+                        <div className="flex border-b border-slate-200 overflow-x-auto shrink-0">
+                            {[
+                                {id:'analysis', label:'答題分析', icon:'fa-chart-pie'},
+                                {id:'students', label:'學生管理', icon:'fa-users'},
+                                {id:'rank', label:'全校排行', icon:'fa-trophy'},
+                                {id:'questions', label:'題庫管理', icon:'fa-book-open'},
+                                {id:'coupons', label:'商店兌換券', icon:'fa-tags'}
+                            ].map(t => (
+                                <button key={t.id} onClick={()=>setTab(t.id)} className={`flex-1 min-w-[120px] p-4 font-bold transition flex items-center justify-center gap-2 ${tab===t.id?'bg-blue-50 text-blue-600 border-b-4 border-blue-600':'text-slate-500 hover:bg-slate-50'}`}>
+                                    <i className={`fas ${t.icon}`}></i> {t.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-6 bg-white/80 grow overflow-y-auto custom-scrollbar">
+                            {tab === 'analysis' && <QuizAnalysisView students={students} />}
+
+                            {tab === 'students' && (
+                                <div>
+                                    <div className="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200 flex items-center gap-3 shadow-sm sticky top-0 z-10">
+                                        <div className="bg-yellow-100 p-2 rounded-full text-yellow-600"><i className="fas fa-coins"></i></div>
+                                        <label className="font-bold text-sm text-yellow-800">快速發金幣面額:</label>
+                                        <input type="number" value={goldAmount} onChange={e=>setGoldAmount(e.target.value)} className="border p-2 w-24 rounded font-bold text-right" />
+                                    </div>
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <thead className="bg-slate-100 text-slate-600 uppercase tracking-wider sticky top-16 z-10 shadow-sm">
+                                            <tr>
+                                                <th className="p-3 border-b">座號</th>
+                                                <th className="p-3 border-b">姓名</th>
+                                                <th className="p-3 border-b">暱稱</th>
+                                                <th className="p-3 border-b text-right">金幣</th>
+                                                <th className="p-3 border-b text-center">答對率 (答數)</th>
+                                                <th className="p-3 border-b text-center">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {[...students].sort((a,b)=>parseInt(a.seat)-parseInt(b.seat)).map(s => (
+                                                <tr key={s.id} className="hover:bg-blue-50 transition group">
+                                                    <td className="p-3 font-bold text-slate-700">{s.seat}</td>
+                                                    <td className="p-3 font-bold">{s.name}</td>
+                                                    <td className="p-3 text-slate-500">{s.nickname || "-"}</td>
+                                                    <td className="p-3 text-right font-mono text-yellow-600 font-bold">{s.gold}</td>
+                                                    <td className="p-3 text-center font-mono text-xs">
+                                                        {s.totalQuizQuestions > 0 ? (
+                                                            <span className={`px-2 py-1 rounded font-bold ${((s.totalQuizCorrect/s.totalQuizQuestions) < 0.6) ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                                                                {Math.round((s.totalQuizCorrect/s.totalQuizQuestions)*100)}% ({s.totalQuizQuestions})
+                                                            </span>
+                                                        ) : <span className="text-slate-300">-</span>}
+                                                    </td>
+                                                    <td className="p-3 flex justify-center gap-2 opacity-100">
+                                                        <button onClick={()=>setEditStudent(s)} className="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs font-bold hover:bg-slate-50 hover:text-blue-600 transition">調整</button>
+                                                        <button onClick={()=>sendGold(s.id, s.name)} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-500 transition shadow-sm border border-yellow-500">發金幣</button>
+                                                        <button onClick={()=>setHistoryStudent(s)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold hover:bg-blue-200 transition"><i className="fas fa-history"></i> 紀錄</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    <div className="mt-8 pt-4 border-t border-slate-200 bg-red-50 p-4 rounded-lg flex items-center gap-4">
+                                        <div className="text-red-600 text-sm font-bold"><i className="fas fa-exclamation-triangle"></i> 資料重置區:</div>
+                                        <select value={resetTargetClass} onChange={e=>setResetTargetClass(e.target.value)} className="border p-2 rounded text-sm">
+                                            <option value="all">全校 (所有班級)</option>
+                                            {CLASSES.map(c=><option key={c} value={c}>{c}班</option>)}
+                                        </select>
+                                        <button onClick={()=>setShowResetConfirm(true)} className="bg-red-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-red-700 transition shadow">執行重置</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'rank' && <LeaderboardView db={db} isTeacherMode={true} />}
+
+                            {tab === 'questions' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                                    <div className="lg:col-span-1 border-r pr-4 flex flex-col">
+                                        <h3 className="font-bold mb-4 text-slate-700 flex items-center gap-2"><i className="fas fa-upload"></i> 上傳題目</h3>
+                                        <div className="bg-blue-50 p-3 text-xs mb-2 text-blue-800 rounded border border-blue-200 leading-relaxed">
+                                            <strong>格式 (Excel複製)：</strong><br />
+                                            題目 [Tab] 答案 [Tab] 金幣 [Tab] 生命 [Tab] 攻擊 [Tab] 防禦
+                                        </div>
+                                        <textarea value={qInput} onChange={e=>setQInput(e.target.value)} className="w-full h-40 border rounded p-2 mb-2 font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="在此貼上..."></textarea>
+                                        <button onClick={uploadQuestions} className="w-full bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 shadow mb-2">確認上傳</button>
+                                        <div className="mt-auto pt-4 border-t">
+                                            <button onClick={()=>confirm("確定清空？") && window.firebaseModules.getDocs(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions')).then(s=>{const b=window.firebaseModules.writeBatch(db);s.docs.forEach(d=>b.delete(d.ref));b.commit();setMsg("已清空")})} className="w-full border border-red-200 text-red-500 px-4 py-2 rounded text-sm hover:bg-red-50">⚠️ 清空所有題目</button>
+                                        </div>
+                                    </div>
+                                    <div className="lg:col-span-2 flex flex-col h-full overflow-hidden">
+                                        <h3 className="font-bold mb-4 text-slate-700 flex justify-between items-center">
+                                            <span><i className="fas fa-list"></i> 已上傳列表</span>
+                                            <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600">{questions.length} 題</span>
+                                        </h3>
+                                        <div className="overflow-y-auto custom-scrollbar border rounded-lg bg-white shadow-inner">
+                                            <table className="w-full text-xs text-left">
+                                                <thead className="bg-slate-50 sticky top-0 text-slate-500">
+                                                    <tr>
+                                                        <th className="p-3 border-b">題目</th>
+                                                        <th className="p-3 border-b w-24">答案</th>
+                                                        <th className="p-3 border-b w-32">獎勵 (G/H/A/D)</th>
+                                                        <th className="p-3 border-b w-20 text-center">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {questions.map(q => (
+                                                        <tr key={q.id} className="hover:bg-blue-50">
+                                                            <td className="p-3 font-medium text-slate-700">{q.question}</td>
+                                                            <td className="p-3 text-green-600 font-bold">{q.answer}</td>
+                                                            <td className="p-3 text-slate-500">{q.gold}/{q.hp}/{q.atk}/{q.def}</td>
+                                                            <td className="p-3 text-center">
+                                                                <button onClick={()=>{setEditItem(q); setEditType('question');}} className="text-blue-500 hover:text-blue-700 mx-1"><i className="fas fa-edit"></i></button>
+                                                                <button onClick={()=>deleteItem('questions', q.id)} className="text-red-400 hover:text-red-600 mx-1"><i className="fas fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                             {tab === 'coupons' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                                    <div className="lg:col-span-1 border-r pr-4 flex flex-col">
+                                        <h3 className="font-bold mb-4 text-slate-700 flex items-center gap-2"><i className="fas fa-upload"></i> 上傳商品</h3>
+                                         <div className="bg-green-50 p-3 text-xs mb-2 text-green-800 rounded border border-green-200 leading-relaxed">
+                                            <strong>格式 (Excel複製)：</strong><br />
+                                            名稱 [Tab] 描述 [Tab] 價格 [Tab] +生命 [Tab] +攻擊 [Tab] +防禦
+                                        </div>
+                                        <textarea value={cInput} onChange={e=>setCInput(e.target.value)} className="w-full h-40 border rounded p-2 mb-2 font-mono text-sm resize-none focus:ring-2 focus:ring-green-500 outline-none" placeholder="在此貼上..."></textarea>
+                                        <button onClick={uploadCoupons} className="w-full bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700 shadow">確認上架</button>
+                                    </div>
+                                    <div className="lg:col-span-2 flex flex-col h-full overflow-hidden">
+                                        <h3 className="font-bold mb-4 text-slate-700 flex justify-between items-center">
+                                            <span><i className="fas fa-tags"></i> 貨架清單</span>
+                                            <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600">{coupons.length} 項</span>
+                                        </h3>
+                                        <div className="overflow-y-auto custom-scrollbar border rounded-lg bg-white shadow-inner">
+                                            <table className="w-full text-xs text-left">
+                                                <thead className="bg-slate-50 sticky top-0 text-slate-500">
+                                                    <tr>
+                                                        <th className="p-3 border-b">名稱</th>
+                                                        <th className="p-3 border-b">描述</th>
+                                                        <th className="p-3 border-b w-20">價格</th>
+                                                        <th className="p-3 border-b w-24">效果</th>
+                                                        <th className="p-3 border-b w-20 text-center">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {coupons.map(c => (
+                                                        <tr key={c.id} className="hover:bg-green-50">
+                                                            <td className="p-3 font-bold text-slate-700">{c.name}</td>
+                                                            <td className="p-3 text-slate-500 truncate max-w-[150px]">{c.desc}</td>
+                                                            <td className="p-3 text-yellow-600 font-bold">${c.cost}</td>
+                                                            <td className="p-3 text-slate-500">+{c.hp}/+{c.atk}/+{c.def}</td>
+                                                            <td className="p-3 text-center">
+                                                                <button onClick={()=>{setEditItem(c); setEditType('coupon');}} className="text-blue-500 hover:text-blue-700 mx-1"><i className="fas fa-edit"></i></button>
+                                                                <button onClick={()=>deleteItem('coupons', c.id)} className="text-red-400 hover:text-red-600 mx-1"><i className="fas fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {msg && <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl animate-bounce-short font-bold flex items-center gap-2"><i className="fas fa-info-circle"></i> {msg}</div>}
+
+                    {/* Modals */}
+                    {editStudent && <EditStatsModal student={editStudent} onClose={()=>setEditStudent(null)} onSave={handleSaveStats} />}
+                    {historyStudent && <QuizHistoryModal student={historyStudent} db={db} classId={classId} onClose={()=>setHistoryStudent(null)} />}
+
+                    {/* Reset Confirm Modal */}
+                    {showResetConfirm && (
+                        <Modal title="⚠️ 危險操作：重置資料" onClose={()=>setShowResetConfirm(false)}>
+                            <div className="space-y-4 text-center">
+                                <div className="text-red-600 font-bold text-lg bg-red-50 p-4 rounded-lg border border-red-200">
+                                    您即將刪除 <span className="underline">{resetTargetClass === 'all' ? '全校' : `${resetTargetClass}班`}</span> 所有學生資料。
+                                    <br />此操作無法復原！
+                                </div>
+                                <p className="text-slate-600 text-sm">請輸入 <strong>RESET</strong> 以確認執行：</p>
+                                <input
+                                    value={resetConfirmCode}
+                                    onChange={e=>setResetConfirmCode(e.target.value)}
+                                    className="w-full p-3 border-2 border-red-300 rounded text-center font-bold tracking-widest uppercase focus:border-red-600 outline-none"
+                                    placeholder="輸入 RESET"
+                                />
+                                <div className="flex gap-2 justify-center mt-4">
+                                    <button onClick={()=>setShowResetConfirm(false)} className="px-4 py-2 bg-slate-200 rounded font-bold text-slate-600">取消</button>
+                                    <button onClick={executeReset} disabled={resetConfirmCode !== 'RESET'} className="px-6 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">確認刪除</button>
+                                </div>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {/* Generic Item Edit Modal */}
+                    {editItem && (
+                        <Modal title={editType === 'question' ? '編輯題目' : '編輯商品'} onClose={()=>{setEditItem(null); setEditType(null);}}>
+                            <div className="space-y-3 text-sm">
+                                {editType === 'question' ? (
+                                    <>
+                                        <div><label className="font-bold text-slate-600">題目</label><textarea value={editItem.question} onChange={e=>setEditItem({...editItem, question: e.target.value})} className="border p-2 w-full h-20 rounded"></textarea></div>
+                                        <div><label className="font-bold text-slate-600">答案</label><input value={editItem.answer} onChange={e=>setEditItem({...editItem, answer: e.target.value})} className="border p-2 w-full rounded" /></div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <div><label className="text-xs font-bold">金幣</label><input type="number" value={editItem.gold} onChange={e=>setEditItem({...editItem, gold: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                            <div><label className="text-xs font-bold">HP</label><input type="number" value={editItem.hp} onChange={e=>setEditItem({...editItem, hp: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                            <div><label className="text-xs font-bold">ATK</label><input type="number" value={editItem.atk} onChange={e=>setEditItem({...editItem, atk: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                            <div><label className="text-xs font-bold">DEF</label><input type="number" value={editItem.def} onChange={e=>setEditItem({...editItem, def: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div><label className="font-bold text-slate-600">名稱</label><input value={editItem.name} onChange={e=>setEditItem({...editItem, name: e.target.value})} className="border p-2 w-full rounded" /></div>
+                                        <div><label className="font-bold text-slate-600">描述</label><textarea value={editItem.desc} onChange={e=>setEditItem({...editItem, desc: e.target.value})} className="border p-2 w-full rounded"></textarea></div>
+                                        <div><label className="font-bold text-slate-600">價格</label><input type="number" value={editItem.cost} onChange={e=>setEditItem({...editItem, cost: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div><label className="text-xs font-bold">+HP</label><input type="number" value={editItem.hp} onChange={e=>setEditItem({...editItem, hp: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                            <div><label className="text-xs font-bold">+ATK</label><input type="number" value={editItem.atk} onChange={e=>setEditItem({...editItem, atk: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                            <div><label className="text-xs font-bold">+DEF</label><input type="number" value={editItem.def} onChange={e=>setEditItem({...editItem, def: parseInt(e.target.value)})} className="border p-2 w-full rounded" /></div>
+                                        </div>
+                                    </>
+                                )}
+                                <button onClick={()=>saveItemEdit(editType === 'question' ? 'questions' : 'coupons', editItem.id, editItem)} className="w-full bg-blue-600 text-white py-2 mt-4 rounded-lg font-bold shadow hover:bg-blue-700">儲存變更</button>
+                            </div>
+                        </Modal>
+                    )}
+                </div>
+            );
+        };
+
+        const App = () => {
+            const { db, ready, error } = useFirebase();
+            const [classId, setClassId] = useState(null);
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('loading');
+
+            useEffect(() => {
+                if(!ready || !db) return;
+                const savedClass = localStorage.getItem('RPG_CLASS');
+                const savedUid = localStorage.getItem('RPG_UID');
+                const tryAutoLogin = async () => {
+                    if (savedClass) {
+                        setClassId(savedClass);
+                        if (savedUid === 'TEACHER') {
+                            setUser({role: 'teacher'});
+                            setView('teacher_dash');
+                        } else if (savedUid) {
+                            const docRef = window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', savedClass, 'users', savedUid);
+                            const docSnap = await window.firebaseModules.getDoc(docRef);
+                            if(docSnap.exists()) {
+                                setUser({id: savedUid, ...docSnap.data()});
+                                setView('student_dash');
+                            } else {
+                                localStorage.removeItem('RPG_UID');
+                                setView('login');
+                            }
+                        } else { setView('login'); }
+                    } else { setView('class_select'); }
+                };
+                tryAutoLogin();
+            }, [ready, db]);
+
+            const handleClassSelect = (c) => { setClassId(c); localStorage.setItem('RPG_CLASS', c); setView('login'); };
+            const handleStudentLogin = async (seat, pwd) => {
+                if(!seat || !pwd) return alert("請輸入完整資訊");
+                const uid = `${classId}-${seat}`;
+                const docRef = window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', uid);
+                const docSnap = await window.firebaseModules.getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data.password === pwd) {
+                        setUser({id: uid, ...data}); localStorage.setItem('RPG_UID', uid); setView('student_dash');
+                    } else { alert("密碼錯誤"); }
+                } else { setUser({id: uid, seat: seat}); setView('register'); }
+            };
+            const handleRegister = async ({name, nickname, gender, avatar, password}) => {
+                const uid = user.id;
+                const newUser = { name, nickname, gender, avatar, password, seat: user.seat, ...INITIAL_STATS, lastLoginDate: formatDate(new Date()) };
+                await window.firebaseModules.setDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', uid), newUser);
+                setUser({id: uid, ...newUser}); localStorage.setItem('RPG_UID', uid); setView('student_dash');
+            };
+            const handleTeacherLogin = (pwd) => {
+                if (pwd === DEFAULT_TEACHER_PWD) { setUser({role: 'teacher'}); localStorage.setItem('RPG_UID', 'TEACHER'); setView('teacher_dash'); } else { alert("老師密碼錯誤"); }
+            };
+            const handleLogout = () => { localStorage.removeItem('RPG_UID'); setUser(null); setView('login'); };
+
+            if (!ready) return <Loading msg="正在連接元素世界..." />;
+            if (error) return <ErrorScreen msg={error} />;
+
+            return (
+                <div className="min-h-screen font-sans text-slate-900 pb-10">
+                    {view === 'loading' && <Loading />}
+                    {view === 'class_select' && (
+                        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-white">
+                            <h1 className="text-5xl md:text-7xl font-black mb-2 tracking-widest gold-text font-serif" style={{fontFamily: 'Cinzel, serif'}}>煉金學園</h1>
+                            <h2 className="text-xl md:text-2xl font-bold mb-12 tracking-[0.5em] silver-text uppercase">Alchemy Academy · 元素之戰</h2>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl px-4">
+                                {CLASSES.map(c => (
+                                    <button key={c} onClick={() => handleClassSelect(c)} className="glass-panel p-6 md:p-8 text-2xl font-black text-slate-800 hover:bg-white hover:scale-105 hover:shadow-[0_0_25px_rgba(250,204,21,0.6)] transition duration-300 border-2 border-transparent hover:border-yellow-400 group relative overflow-hidden">
+                                        <span className="relative z-10">{c} <span className="text-sm font-normal text-slate-500">班</span></span>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-yellow-100/0 via-yellow-100/50 to-yellow-100/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {view === 'login' && <LoginView classId={classId} onLogin={handleStudentLogin} onTeacherLogin={handleTeacherLogin} onBack={()=>setView('class_select')} />}
+                    {view === 'register' && <RegisterModal seat={user.seat} onRegister={handleRegister} onCancel={()=>setView('login')} />}
+                    {view === 'student_dash' && user && <StudentDashboard user={user} db={db} classId={classId} onLogout={handleLogout} />}
+                    {view === 'teacher_dash' && <TeacherDashboard db={db} classId={classId} onLogout={handleLogout} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
