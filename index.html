@@ -19,8 +19,9 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- jsPDF (Phase ② 用) -->
+    <!-- jsPDF + html2canvas（學習報告 PDF 用） -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         #error-log { display:none; position:fixed; bottom:10px; right:10px; background:white; border:2px solid red; padding:10px; z-index:9999; font-size:12px; color:red; max-height: 200px; overflow: auto; box-shadow: 0 0 10px rgba(0,0,0,0.2); max-width: 400px; }
@@ -210,12 +211,12 @@
             "8上-4": "光、影像與顏色",
             "8上-5": "溫度與熱",
             "8上-6": "物質的基本結構",
-            "8下-1": "八下第一章",
-            "8下-2": "八下第二章",
-            "8下-3": "八下第三章",
-            "8下-4": "八下第四章",
-            "8下-5": "八下第五章",
-            "8下-6": "八下第六章"
+            "8下-1": "化學反應",
+            "8下-2": "氧化還原反應",
+            "8下-3": "電解質與酸鹼鹽",
+            "8下-4": "反應速率與平衡",
+            "8下-5": "有機化合物",
+            "8下-6": "力與壓力"
         };
         const ALL_CHAPTERS = Object.keys(CHAPTER_NAMES);
 
@@ -478,6 +479,370 @@
                 </div>
             );
         };
+
+        // ============================================================
+        // PDF Helpers (html2canvas + jsPDF)
+        // ============================================================
+        const renderToPdf = async (element, filename) => {
+            if (!window.html2canvas || !window.jspdf) {
+                alert("PDF 函式庫尚未載入完成，請稍候再試");
+                return;
+            }
+            const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = pdfWidth;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            if (imgHeight <= pdfHeight) {
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            } else {
+                let heightLeft = imgHeight, position = 0;
+                while (heightLeft > 0) {
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pdfHeight;
+                    position -= pdfHeight;
+                    if (heightLeft > 0) pdf.addPage();
+                }
+            }
+            pdf.save(filename);
+        };
+        const renderMultiPagePdf = async (elements, filename) => {
+            if (!window.html2canvas || !window.jspdf) return;
+            const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            for (let i = 0; i < elements.length; i++) {
+                const canvas = await window.html2canvas(elements[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+                const imgData = canvas.toDataURL('image/png');
+                const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+                if (i > 0) pdf.addPage();
+                if (imgHeight <= pdfHeight) {
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+                } else {
+                    let heightLeft = imgHeight, position = 0;
+                    while (heightLeft > 0) {
+                        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                        heightLeft -= pdfHeight;
+                        position -= pdfHeight;
+                        if (heightLeft > 0) pdf.addPage();
+                    }
+                }
+            }
+            pdf.save(filename);
+        };
+
+        // ============================================================
+        // Report Card Components (will be rendered off-screen and snapshotted)
+        // ============================================================
+        const REPORT_STYLE = {
+            width: 800, padding: 32, background: 'white', color: '#1e293b',
+            fontFamily: "'Noto Sans TC', sans-serif", boxSizing: 'border-box'
+        };
+
+        const StatBox = ({ label, value, color }) => (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: color || '#1e293b' }}>{value}</div>
+            </div>
+        );
+
+        const StudentReportCard = ({ student, classRank, totalStudents }) => {
+            const eff = getEffectiveStats(student);
+            const acc = (student.totalQuizQuestions || 0) > 0 ? Math.round(((student.totalQuizCorrect || 0) / student.totalQuizQuestions) * 100) : 0;
+            const chapterRows = ALL_CHAPTERS.map(c => {
+                const s = (student.chapterStats || {})[c] || { questions: 0, correct: 0 };
+                const ca = (s.questions || 0) > 0 ? Math.round((s.correct / s.questions) * 100) : null;
+                return { chapter: c, name: CHAPTER_NAMES[c], q: s.questions || 0, ok: s.correct || 0, acc: ca };
+            });
+            const eq = {
+                weapon: student.equippedWeapon && SHOP_ITEMS[student.equippedWeapon],
+                armor: student.equippedArmor && SHOP_ITEMS[student.equippedArmor],
+                accessory: student.equippedAccessory && SHOP_ITEMS[student.equippedAccessory]
+            };
+            const today = new Date();
+            return (
+                <div style={REPORT_STYLE}>
+                    <div style={{ borderBottom: '4px solid #f59e0b', paddingBottom: 8, marginBottom: 16 }}>
+                        <div style={{ fontSize: 26, fontWeight: 900 }}>📜 學習報告</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>產生日期：{today.getFullYear()}/{today.getMonth() + 1}/{today.getDate()} ｜ 煉金學園 · 元素之戰</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20 }}>
+                        <img src={student.avatar} crossOrigin="anonymous" style={{ width: 80, height: 80, borderRadius: '50%', background: '#fff', border: '2px solid #3b82f6' }} />
+                        <div>
+                            <div style={{ fontSize: 22, fontWeight: 900 }}>{student.name} <span style={{ fontSize: 14, color: '#64748b' }}>（{student.nickname || '—'}）</span></div>
+                            <div style={{ color: '#64748b', fontSize: 14 }}>{student.class}班 {student.seat}號 ｜ 元素：<b>{student.levelName}</b> ｜ Lv.{Math.floor((student.xp || 0) / 100)} ｜ XP {student.xp || 0}</div>
+                            {classRank > 0 && <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: 13 }}>全校排名 #{classRank} / {totalStudents}</div>}
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #3b82f6', paddingLeft: 8, marginBottom: 8 }}>戰力屬性（含裝備）</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <StatBox label="最大 HP" value={eff.maxHp} color="#dc2626" />
+                            <StatBox label="攻擊力" value={eff.atk} color="#ea580c" />
+                            <StatBox label="防禦力" value={eff.def} color="#4f46e5" />
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #f59e0b', paddingLeft: 8, marginBottom: 8 }}>金幣 / 資產</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+                            <StatBox label="目前金幣" value={student.gold || 0} color="#d97706" />
+                            <StatBox label="總收入" value={student.totalGoldEarned || 0} />
+                            <StatBox label="總花費" value={student.totalGoldSpent || 0} />
+                            <StatBox label="愛心" value={student.hearts || 0} color="#ec4899" />
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #059669', paddingLeft: 8, marginBottom: 8 }}>答題統計</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <StatBox label="總答題數" value={student.totalQuizQuestions || 0} />
+                            <StatBox label="答對題數" value={student.totalQuizCorrect || 0} color="#059669" />
+                            <StatBox label="生涯答對率" value={acc + '%'} color={acc >= 80 ? '#059669' : acc >= 60 ? '#d97706' : '#dc2626'} />
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #7c3aed', paddingLeft: 8, marginBottom: 8 }}>各章節答對率</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                            <thead>
+                                <tr style={{ background: '#f1f5f9' }}>
+                                    <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'left' }}>章節</th>
+                                    <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>題數</th>
+                                    <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>答對</th>
+                                    <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>答對率</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {chapterRows.map(r => (
+                                    <tr key={r.chapter}>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>{r.chapter} {r.name}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{r.q}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{r.ok}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center', fontWeight: 700, color: r.acc == null ? '#94a3b8' : r.acc < 60 ? '#dc2626' : r.acc < 85 ? '#d97706' : '#059669' }}>{r.acc != null ? r.acc + '%' : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #dc2626', paddingLeft: 8, marginBottom: 8 }}>PK 戰績</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <StatBox label="勝" value={student.pkWins || 0} color="#059669" />
+                            <StatBox label="負" value={student.pkLosses || 0} color="#dc2626" />
+                            <StatBox label="平" value={student.pkDraws || 0} />
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #0891b2', paddingLeft: 8, marginBottom: 8 }}>裝備</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>武器</div>
+                                <div style={{ fontSize: 14, fontWeight: 700 }}>{eq.weapon ? `${eq.weapon.emoji} ${eq.weapon.name}` : '（無）'}</div>
+                            </div>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>防具</div>
+                                <div style={{ fontSize: 14, fontWeight: 700 }}>{eq.armor ? `${eq.armor.emoji} ${eq.armor.name}` : '（無）'}</div>
+                            </div>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>飾品</div>
+                                <div style={{ fontSize: 14, fontWeight: 700 }}>{eq.accessory ? `${eq.accessory.emoji} ${eq.accessory.name}` : '（無）'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 24, padding: 12, background: '#fef3c7', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+                        <b>📌 本學年的學習旅程到此告一段落！</b> 繼續保持好奇心，下個學年再見！
+                    </div>
+                </div>
+            );
+        };
+
+        const ClassReportCover = ({ classId, students }) => {
+            const active = students.filter(s => (s.totalQuizQuestions || 0) > 0);
+            const totalQ = active.reduce((a, s) => a + (s.totalQuizQuestions || 0), 0);
+            const totalC = active.reduce((a, s) => a + (s.totalQuizCorrect || 0), 0);
+            const avgAcc = totalQ > 0 ? ((totalC / totalQ) * 100).toFixed(1) : 0;
+            const chapterAgg = {};
+            ALL_CHAPTERS.forEach(c => chapterAgg[c] = { q: 0, c: 0 });
+            students.forEach(s => Object.entries(s.chapterStats || {}).forEach(([ch, st]) => {
+                if (!chapterAgg[ch]) chapterAgg[ch] = { q: 0, c: 0 };
+                chapterAgg[ch].q += st.questions || 0;
+                chapterAgg[ch].c += st.correct || 0;
+            }));
+            const today = new Date();
+            const sorted = [...students].sort((a, b) => (b.xp || 0) - (a.xp || 0)).slice(0, 10);
+            return (
+                <div style={REPORT_STYLE}>
+                    <div style={{ borderBottom: '4px solid #f59e0b', paddingBottom: 8, marginBottom: 16 }}>
+                        <div style={{ fontSize: 26, fontWeight: 900 }}>🏫 {classId}班 學年總結</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>產生日期：{today.getFullYear()}/{today.getMonth() + 1}/{today.getDate()}</div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+                        <StatBox label="班級平均答對率" value={avgAcc + '%'} color="#059669" />
+                        <StatBox label="總答題數" value={totalQ} color="#3b82f6" />
+                        <StatBox label="參與人數" value={`${active.length}/${students.length}`} color="#7c3aed" />
+                    </div>
+
+                    <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #3b82f6', paddingLeft: 8, marginBottom: 8 }}>各章節答對率</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
+                        <thead>
+                            <tr style={{ background: '#f1f5f9' }}>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'left' }}>章節</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>總題數</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>總答對</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>答對率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {ALL_CHAPTERS.map(c => {
+                                const a = chapterAgg[c];
+                                const pct = a.q > 0 ? Math.round((a.c / a.q) * 100) : null;
+                                return (
+                                    <tr key={c}>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>{c} {CHAPTER_NAMES[c]}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{a.q}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{a.c}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center', fontWeight: 700, color: pct == null ? '#94a3b8' : pct < 60 ? '#dc2626' : pct < 85 ? '#d97706' : '#059669' }}>{pct != null ? pct + '%' : '—'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+
+                    <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #d97706', paddingLeft: 8, marginBottom: 8 }}>班級 Top 10（依 XP）</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                            <tr style={{ background: '#f1f5f9' }}>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>名次</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'left' }}>姓名</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>座號</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>XP</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>答對率</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>金幣</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sorted.map((s, i) => {
+                                const acc = (s.totalQuizQuestions || 0) > 0 ? Math.round(((s.totalQuizCorrect || 0) / s.totalQuizQuestions) * 100) : 0;
+                                return (
+                                    <tr key={s.id}>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center', fontWeight: 900 }}>#{i + 1}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>{s.name}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{s.seat}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{s.xp || 0}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{acc}%</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{s.gold || 0}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        const GradeReportCover = ({ allUsers }) => {
+            const byClass = {};
+            CLASSES.forEach(c => byClass[c] = []);
+            allUsers.forEach(u => { if (byClass[u.class]) byClass[u.class].push(u); });
+            const today = new Date();
+            const totalActive = allUsers.filter(u => (u.totalQuizQuestions || 0) > 0);
+            const totalQ = totalActive.reduce((a, s) => a + (s.totalQuizQuestions || 0), 0);
+            const totalC = totalActive.reduce((a, s) => a + (s.totalQuizCorrect || 0), 0);
+            const gradeAcc = totalQ > 0 ? ((totalC / totalQ) * 100).toFixed(1) : 0;
+            const top20 = [...allUsers].sort((a, b) => (b.xp || 0) - (a.xp || 0)).slice(0, 20);
+            return (
+                <div style={REPORT_STYLE}>
+                    <div style={{ borderBottom: '4px solid #f59e0b', paddingBottom: 8, marginBottom: 16 }}>
+                        <div style={{ fontSize: 26, fontWeight: 900 }}>🎓 全年級 學年總結</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>產生日期：{today.getFullYear()}/{today.getMonth() + 1}/{today.getDate()}</div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+                        <StatBox label="全年級平均答對率" value={gradeAcc + '%'} color="#059669" />
+                        <StatBox label="總答題數" value={totalQ} color="#3b82f6" />
+                        <StatBox label="參與人數" value={`${totalActive.length}/${allUsers.length}`} color="#7c3aed" />
+                    </div>
+
+                    <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #3b82f6', paddingLeft: 8, marginBottom: 8 }}>各班比較</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
+                        <thead>
+                            <tr style={{ background: '#f1f5f9' }}>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>班級</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>人數</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>總答題</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>答對率</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>平均 XP</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 8px' }}>PK 總戰</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {CLASSES.map(c => {
+                                const list = byClass[c] || [];
+                                const cTotalQ = list.reduce((a, s) => a + (s.totalQuizQuestions || 0), 0);
+                                const cTotalC = list.reduce((a, s) => a + (s.totalQuizCorrect || 0), 0);
+                                const cAcc = cTotalQ > 0 ? Math.round((cTotalC / cTotalQ) * 100) : 0;
+                                const cAvgXp = list.length > 0 ? Math.round(list.reduce((a, s) => a + (s.xp || 0), 0) / list.length) : 0;
+                                const cPk = list.reduce((a, s) => a + (s.pkWins || 0) + (s.pkLosses || 0) + (s.pkDraws || 0), 0);
+                                return (
+                                    <tr key={c}>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', fontWeight: 900, textAlign: 'center' }}>{c}班</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{list.length}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{cTotalQ}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center', fontWeight: 700, color: cAcc < 60 ? '#dc2626' : cAcc < 85 ? '#d97706' : '#059669' }}>{cAcc}%</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{cAvgXp}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'center' }}>{cPk}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+
+                    <h3 style={{ fontSize: 16, fontWeight: 700, borderLeft: '4px solid #d97706', paddingLeft: 8, marginBottom: 8 }}>全年級 Top 20</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                        <thead>
+                            <tr style={{ background: '#f1f5f9' }}>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>名次</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>班級</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'left' }}>姓名</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>XP</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>答對率</th>
+                                <th style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>金幣</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {top20.map((s, i) => {
+                                const acc = (s.totalQuizQuestions || 0) > 0 ? Math.round(((s.totalQuizCorrect || 0) / s.totalQuizQuestions) * 100) : 0;
+                                return (
+                                    <tr key={s.id}>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'center', fontWeight: 900 }}>#{i + 1}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'center' }}>{s.class}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px' }}>{s.name}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'center' }}>{s.xp || 0}</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'center' }}>{acc}%</td>
+                                        <td style={{ border: '1px solid #e2e8f0', padding: '4px 6px', textAlign: 'center' }}>{s.gold || 0}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        // 隱藏的 PDF 渲染區域
+        const HiddenReportPortal = React.forwardRef(({ children }, ref) => (
+            <div ref={ref} style={{ position: 'fixed', left: -99999, top: 0, zIndex: -1 }}>
+                {children}
+            </div>
+        ));
 
         // ============================================================
         // Leaderboard
@@ -744,9 +1109,9 @@
                             const sold = limits[item.id] || 0;
                             if (sold >= item.globalLimit) throw "已售完";
                             // 永久升級石：直接套用，不入背包
-                            const newBaseAtk = (uData.baseAtk || 10) + (item.effects.atk || 0);
-                            const newBaseDef = (uData.baseDef || 10) + (item.effects.def || 0);
-                            const newBaseMaxHp = (uData.baseMaxHp || 100) + (item.effects.hp || 0);
+                            const newBaseAtk = (uData.baseAtk ?? uData.atk ?? 10) + (item.effects.atk || 0);
+                            const newBaseDef = (uData.baseDef ?? uData.def ?? 10) + (item.effects.def || 0);
+                            const newBaseMaxHp = (uData.baseMaxHp ?? uData.maxHp ?? 100) + (item.effects.hp || 0);
                             t.update(userRef, {
                                 gold: (uData.gold || 0) - item.cost,
                                 totalGoldSpent: (uData.totalGoldSpent || 0) + item.cost,
@@ -1168,9 +1533,9 @@
                     const uDoc = await t.get(userRef);
                     const d = uDoc.data();
 
-                    const newBaseMaxHp = (d.baseMaxHp || 100) + totalHp;
-                    const newBaseAtk = (d.baseAtk || 10) + totalAtk;
-                    const newBaseDef = (d.baseDef || 10) + totalDef;
+                    const newBaseMaxHp = (d.baseMaxHp ?? d.maxHp ?? 100) + totalHp;
+                    const newBaseAtk = (d.baseAtk ?? d.atk ?? 10) + totalAtk;
+                    const newBaseDef = (d.baseDef ?? d.def ?? 10) + totalDef;
 
                     // 章節統計
                     const chapStats = { ...(d.chapterStats || {}) };
@@ -1372,15 +1737,15 @@
                             const aEff = getEffectiveStats(aData);
                             dUpd.gold = (dData.gold || 0) + goldGain;
                             dUpd.totalGoldEarned = (dData.totalGoldEarned || 0) + goldGain;
-                            dUpd.baseMaxHp = (dData.baseMaxHp || 100) + hpGain;
-                            dUpd.baseAtk = (dData.baseAtk || 10) + atkGain;
-                            dUpd.baseDef = (dData.baseDef || 10) + defGain;
+                            dUpd.baseMaxHp = (dData.baseMaxHp ?? dData.maxHp ?? 100) + hpGain;
+                            dUpd.baseAtk = (dData.baseAtk ?? dData.atk ?? 10) + atkGain;
+                            dUpd.baseDef = (dData.baseDef ?? dData.def ?? 10) + defGain;
                             dUpd.pkDraws = (dData.pkDraws || 0) + 1;
                             aUpd.gold = (aData.gold || 0) + goldGain;
                             aUpd.totalGoldEarned = (aData.totalGoldEarned || 0) + goldGain;
-                            aUpd.baseMaxHp = (aData.baseMaxHp || 100) + hpGain;
-                            aUpd.baseAtk = (aData.baseAtk || 10) + atkGain;
-                            aUpd.baseDef = (aData.baseDef || 10) + defGain;
+                            aUpd.baseMaxHp = (aData.baseMaxHp ?? aData.maxHp ?? 100) + hpGain;
+                            aUpd.baseAtk = (aData.baseAtk ?? aData.atk ?? 10) + atkGain;
+                            aUpd.baseDef = (aData.baseDef ?? aData.def ?? 10) + defGain;
                             aUpd.pkDraws = (aData.pkDraws || 0) + 1;
                             defenderLog = `平手！雙方都答對，獲得 ${goldGain} 金幣${hpGain ? "+" + hpGain + "HP " : ""}${atkGain ? "+" + atkGain + "ATK " : ""}${defGain ? "+" + defGain + "DEF" : ""}。`;
                             attackerLog = `平手！你與 ${dData.nickname || "神秘人"} 都答對。`;
@@ -1388,9 +1753,9 @@
                             // 攻擊者勝：扣防守方 HP，攻擊方雙倍獎勵
                             aUpd.gold = (aData.gold || 0) + goldGain * 2;
                             aUpd.totalGoldEarned = (aData.totalGoldEarned || 0) + goldGain * 2;
-                            aUpd.baseMaxHp = (aData.baseMaxHp || 100) + hpGain * 2;
-                            aUpd.baseAtk = (aData.baseAtk || 10) + atkGain * 2;
-                            aUpd.baseDef = (aData.baseDef || 10) + defGain * 2;
+                            aUpd.baseMaxHp = (aData.baseMaxHp ?? aData.maxHp ?? 100) + hpGain * 2;
+                            aUpd.baseAtk = (aData.baseAtk ?? aData.atk ?? 10) + atkGain * 2;
+                            aUpd.baseDef = (aData.baseDef ?? aData.def ?? 10) + defGain * 2;
                             aUpd.pkWins = (aData.pkWins || 0) + 1;
                             let newDefHp = Math.max(0, (dData.hp || 0) - dmgToDefender);
                             // 復活符
@@ -1411,9 +1776,9 @@
                         } else if (!attackerCorrect && defenderCorrect) {
                             dUpd.gold = (dData.gold || 0) + goldGain * 2;
                             dUpd.totalGoldEarned = (dData.totalGoldEarned || 0) + goldGain * 2;
-                            dUpd.baseMaxHp = (dData.baseMaxHp || 100) + hpGain * 2;
-                            dUpd.baseAtk = (dData.baseAtk || 10) + atkGain * 2;
-                            dUpd.baseDef = (dData.baseDef || 10) + defGain * 2;
+                            dUpd.baseMaxHp = (dData.baseMaxHp ?? dData.maxHp ?? 100) + hpGain * 2;
+                            dUpd.baseAtk = (dData.baseAtk ?? dData.atk ?? 10) + atkGain * 2;
+                            dUpd.baseDef = (dData.baseDef ?? dData.def ?? 10) + defGain * 2;
                             dUpd.pkWins = (dData.pkWins || 0) + 1;
                             let newAttHp = Math.max(0, (aData.hp || 0) - dmgToAttacker);
                             if (newAttHp === 0) {
@@ -1556,6 +1921,50 @@
             const [pkNotification, setPkNotification] = useState(null);
             const [fortuneResult, setFortuneResult] = useState(null);
             const [currentUser, setCurrentUser] = useState({ ...user, class: classId });
+            const [pdfTarget, setPdfTarget] = useState(null);
+            const [downloading, setDownloading] = useState(false);
+            const pdfRef = useRef(null);
+
+            // 觸發 PDF 渲染：當 pdfTarget 改變且 DOM 已準備好，呼叫 renderToPdf
+            useEffect(() => {
+                if (!pdfTarget) return;
+                let cancelled = false;
+                (async () => {
+                    await new Promise(r => setTimeout(r, 300)); // 等圖片載入
+                    if (cancelled || !pdfRef.current) return;
+                    try {
+                        await renderToPdf(pdfRef.current, pdfTarget.filename);
+                    } catch (e) {
+                        console.error(e);
+                        alert("PDF 產生失敗：" + (e.message || e));
+                    }
+                    setPdfTarget(null);
+                    setDownloading(false);
+                })();
+                return () => { cancelled = true; };
+            }, [pdfTarget]);
+
+            const downloadMyReport = async () => {
+                if (downloading) return;
+                setDownloading(true);
+                try {
+                    let all = [];
+                    for (let c of CLASSES) {
+                        const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
+                        const snap = await window.firebaseModules.getDocs(q);
+                        snap.forEach(d => all.push({ ...d.data(), class: c, id: d.id }));
+                    }
+                    all.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                    const rank = all.findIndex(u => u.id === currentUser.id) + 1;
+                    setPdfTarget({
+                        filename: `${currentUser.class}班_${currentUser.seat}號_${currentUser.name}_學習報告.pdf`,
+                        node: <StudentReportCard student={currentUser} classRank={rank} totalStudents={all.length} />
+                    });
+                } catch (e) {
+                    setDownloading(false);
+                    alert("無法產生報告：" + e.message);
+                }
+            };
 
             const activeInfo = getActiveChapters();
             const inMaintenance = activeInfo.maintenance;
@@ -1587,6 +1996,32 @@
                 });
                 return () => { unsubUser(); unsubPk(); unsubNotif(); };
             }, [db, user.id, classId]);
+
+            // 舊資料遷移（從 atk/def/maxHp 搬到 baseAtk/baseDef/baseMaxHp，並清掉不相容的舊背包）
+            useEffect(() => {
+                if (!currentUser || !currentUser.id) return;
+                const needsMigration = currentUser.atk !== undefined && currentUser.baseAtk === undefined;
+                const inventoryDirty = Array.isArray(currentUser.inventory) && currentUser.inventory.length > 0 && currentUser.inventory.some(i => i && !i.itemId);
+                if (!needsMigration && !inventoryDirty) return;
+                (async () => {
+                    const { doc, updateDoc } = window.firebaseModules;
+                    const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
+                    const upd = {};
+                    if (needsMigration) {
+                        upd.baseAtk = currentUser.atk || 10;
+                        upd.baseDef = currentUser.def || 10;
+                        upd.baseMaxHp = currentUser.maxHp || 100;
+                        if (currentUser.dailyPkAttacks === undefined) upd.dailyPkAttacks = 0;
+                        if (currentUser.dailyPkDefenses === undefined) upd.dailyPkDefenses = 0;
+                        if (!Array.isArray(currentUser.buffs)) upd.buffs = [];
+                    }
+                    if (inventoryDirty) {
+                        // 舊背包格式（{...item, uid}）不相容，清空
+                        upd.inventory = (currentUser.inventory || []).filter(i => i && i.itemId);
+                    }
+                    if (Object.keys(upd).length > 0) await updateDoc(userRef, upd);
+                })();
+            }, [currentUser.id, currentUser.baseAtk]);
 
             // 每日結算（重設 daily 計數、補滿 HP、發送登入獎勵、清理過期 buff）
             useEffect(() => {
@@ -1690,8 +2125,8 @@
                                         <h3 className="text-xl font-bold text-slate-800 mb-2">學年統計計算中</h3>
                                         <p className="text-sm text-slate-500">系統目前不開放答題（7/1 ~ 7/15）。</p>
                                         {isStudentReportPeriod() && (
-                                            <button className="mt-4 bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-emerald-700">
-                                                <i className="fas fa-file-pdf"></i> 下載我的學習報告（階段②）
+                                            <button onClick={downloadMyReport} disabled={downloading} className="mt-4 bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-emerald-700 disabled:opacity-50">
+                                                <i className={`fas ${downloading ? 'fa-spinner fa-spin' : 'fa-file-pdf'}`}></i> {downloading ? "產生中..." : "下載我的學習報告"}
                                             </button>
                                         )}
                                     </div>
@@ -1754,6 +2189,12 @@
                             </div>
                         </Modal>
                     )}
+
+                    {pdfTarget && (
+                        <HiddenReportPortal ref={pdfRef}>
+                            {pdfTarget.node}
+                        </HiddenReportPortal>
+                    )}
                 </div>
             );
         };
@@ -1765,9 +2206,9 @@
             const eff = getEffectiveStats(student);
             const [stats, setStats] = useState({
                 hp: student.hp || 0,
-                baseMaxHp: student.baseMaxHp || 100,
-                baseAtk: student.baseAtk || 10,
-                baseDef: student.baseDef || 10,
+                baseMaxHp: student.baseMaxHp ?? student.maxHp ?? 100,
+                baseAtk: student.baseAtk ?? student.atk ?? 10,
+                baseDef: student.baseDef ?? student.def ?? 10,
                 gold: student.gold || 0
             });
             return (
@@ -1930,6 +2371,94 @@
             const [resetTargetClass, setResetTargetClass] = useState("all");
             const [showResetConfirm, setShowResetConfirm] = useState(false);
             const [resetConfirmCode, setResetConfirmCode] = useState("");
+            const [pdfPages, setPdfPages] = useState(null);
+            const [downloading, setDownloading] = useState(false);
+            const pdfPageRefs = useRef([]);
+
+            useEffect(() => {
+                if (!pdfPages) return;
+                let cancelled = false;
+                (async () => {
+                    await new Promise(r => setTimeout(r, 400));
+                    if (cancelled) return;
+                    const elements = pdfPageRefs.current.filter(r => r);
+                    if (elements.length === 0) {
+                        setPdfPages(null); setDownloading(false); return;
+                    }
+                    try {
+                        await renderMultiPagePdf(elements, pdfPages.filename);
+                    } catch (e) {
+                        console.error(e);
+                        alert("PDF 產生失敗：" + (e.message || e));
+                    }
+                    pdfPageRefs.current = [];
+                    setPdfPages(null);
+                    setDownloading(false);
+                })();
+                return () => { cancelled = true; };
+            }, [pdfPages]);
+
+            const fetchAllUsers = async () => {
+                let all = [];
+                for (let c of CLASSES) {
+                    const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
+                    const snap = await window.firebaseModules.getDocs(q);
+                    snap.forEach(d => all.push({ ...d.data(), class: c, id: d.id }));
+                }
+                return all;
+            };
+
+            const downloadOneStudent = async (student) => {
+                if (downloading) return;
+                setDownloading(true);
+                try {
+                    const all = await fetchAllUsers();
+                    all.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                    const enriched = { ...student, class: student.class || classId };
+                    const rank = all.findIndex(u => u.id === student.id) + 1;
+                    setPdfPages({
+                        filename: `${enriched.class}班_${enriched.seat}號_${enriched.name}_學習報告.pdf`,
+                        pages: [<StudentReportCard key="s" student={enriched} classRank={rank} totalStudents={all.length} />]
+                    });
+                } catch (e) { setDownloading(false); alert(e.message); }
+            };
+
+            const downloadClassReport = async () => {
+                if (downloading) return;
+                setDownloading(true);
+                try {
+                    const all = await fetchAllUsers();
+                    const ranked = [...all].sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                    const sortedClass = [...students].sort((a, b) => parseInt(a.seat) - parseInt(b.seat));
+                    const pages = [
+                        <ClassReportCover key="cover" classId={classId} students={sortedClass} />,
+                        ...sortedClass.map(s => {
+                            const enriched = { ...s, class: classId };
+                            const rank = ranked.findIndex(u => u.id === s.id) + 1;
+                            return <StudentReportCard key={s.id} student={enriched} classRank={rank} totalStudents={all.length} />;
+                        })
+                    ];
+                    setPdfPages({ filename: `${classId}班_完整學習報告.pdf`, pages });
+                } catch (e) { setDownloading(false); alert(e.message); }
+            };
+
+            const downloadGradeReport = async () => {
+                if (downloading) return;
+                setDownloading(true);
+                try {
+                    const all = await fetchAllUsers();
+                    setPdfPages({
+                        filename: `全年級_學習統計報告.pdf`,
+                        pages: [<GradeReportCover key="grade" allUsers={all} />]
+                    });
+                } catch (e) { setDownloading(false); alert(e.message); }
+            };
+
+            const resetStudentPassword = async (student) => {
+                if (!confirm(`確定要將 ${student.name} 的密碼重設為 "1234"？`)) return;
+                await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', student.id), { password: "1234" });
+                setMsg(`已重設 ${student.name} 的密碼為 1234`);
+            };
 
             useEffect(() => {
                 if (!db) return;
@@ -1989,6 +2518,43 @@
                 setQInput("");
             };
 
+            const uploadQuestionsJson = async (file) => {
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const arr = JSON.parse(text);
+                    if (!Array.isArray(arr)) { setMsg("JSON 必須是陣列"); return; }
+                    const colRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
+                    let count = 0, failed = 0, batches = [], current = window.firebaseModules.writeBatch(db), inBatch = 0;
+                    for (const q of arr) {
+                        if (!q || typeof q !== 'object') { failed++; continue; }
+                        if (!ALL_CHAPTERS.includes(q.chapter)) { failed++; continue; }
+                        if (!q.options || !["A", "B", "C", "D"].includes((q.answer || "").toUpperCase())) { failed++; continue; }
+                        current.set(window.firebaseModules.doc(colRef), {
+                            chapter: q.chapter,
+                            question: q.question || "",
+                            options: { A: q.options.A || "", B: q.options.B || "", C: q.options.C || "", D: q.options.D || "" },
+                            answer: q.answer.toUpperCase(),
+                            imageUrl: q.imageUrl || null,
+                            gold: parseInt(q.gold) || 10,
+                            hp: parseInt(q.hp) || 0,
+                            atk: parseInt(q.atk) || 0,
+                            def: parseInt(q.def) || 0,
+                            difficulty: q.difficulty || null,
+                            section: q.section || null,
+                            timestamp: Date.now()
+                        });
+                        count++; inBatch++;
+                        if (inBatch >= 400) { batches.push(current); current = window.firebaseModules.writeBatch(db); inBatch = 0; }
+                    }
+                    if (inBatch > 0) batches.push(current);
+                    for (const b of batches) await b.commit();
+                    setMsg(`JSON 上傳成功 ${count} 題（失敗 ${failed} 筆）`);
+                } catch (e) {
+                    setMsg("JSON 解析或上傳失敗：" + e.message);
+                }
+            };
+
             const executeReset = async () => {
                 if (resetConfirmCode !== "RESET") {
                     setMsg("確認碼錯誤，操作取消");
@@ -2038,7 +2604,8 @@
                                 { id: 'analysis', label: '答題分析', icon: 'fa-chart-pie' },
                                 { id: 'students', label: '學生管理', icon: 'fa-users' },
                                 { id: 'rank', label: '全校排行', icon: 'fa-trophy' },
-                                { id: 'questions', label: '題庫管理', icon: 'fa-book-open' }
+                                { id: 'questions', label: '題庫管理', icon: 'fa-book-open' },
+                                { id: 'reports', label: '學習報告', icon: 'fa-file-pdf' }
                             ].map(t => (
                                 <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 min-w-[120px] p-4 font-bold transition flex items-center justify-center gap-2 ${tab === t.id ? 'bg-blue-50 text-blue-600 border-b-4 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>
                                     <i className={`fas ${t.icon}`}></i> {t.label}
@@ -2084,6 +2651,7 @@
                                                             <button onClick={() => setEditStudent(s)} className="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs font-bold hover:bg-slate-50">調整</button>
                                                             <button onClick={() => sendGold(s.id, s.name)} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-500 border border-yellow-500">發金幣</button>
                                                             <button onClick={() => setHistoryStudent(s)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold hover:bg-blue-200"><i className="fas fa-history"></i> 紀錄</button>
+                                                            <button onClick={() => resetStudentPassword(s)} className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-xs font-bold hover:bg-purple-200"><i className="fas fa-key"></i> 重設密碼</button>
                                                         </td>
                                                     </tr>
                                                 );
@@ -2113,7 +2681,17 @@
                                             章節：8上-1 / 8上-2 / ... / 8下-6
                                         </div>
                                         <textarea value={qInput} onChange={e => setQInput(e.target.value)} className="w-full h-40 border rounded p-2 mb-2 font-mono text-sm resize-none" placeholder="在此貼上（從 Excel 複製）..."></textarea>
-                                        <button onClick={uploadQuestions} className="w-full bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 shadow">確認上傳</button>
+                                        <button onClick={uploadQuestions} className="w-full bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 shadow">確認上傳（TSV）</button>
+                                        <div className="mt-3 pt-3 border-t border-slate-200">
+                                            <div className="text-xs text-slate-500 mb-2 leading-relaxed">
+                                                <strong>或直接上傳 JSON 檔：</strong><br />
+                                                （題庫資料夾的 8-1.json、8-2.json…）
+                                            </div>
+                                            <label className="block w-full bg-emerald-600 text-white px-4 py-2 rounded font-bold hover:bg-emerald-700 shadow cursor-pointer text-center">
+                                                <i className="fas fa-file-code"></i> 選擇 JSON 檔案
+                                                <input type="file" accept=".json,application/json" className="hidden" onChange={e => { uploadQuestionsJson(e.target.files[0]); e.target.value = ''; }} />
+                                            </label>
+                                        </div>
                                         <div className="mt-auto pt-4 border-t">
                                             <button onClick={() => confirm("確定清空所有題目？") && window.firebaseModules.getDocs(window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions')).then(s => { const b = window.firebaseModules.writeBatch(db); s.docs.forEach(d => b.delete(d.ref)); b.commit(); setMsg("已清空"); })} className="w-full border border-red-200 text-red-500 px-4 py-2 rounded text-sm hover:bg-red-50">⚠️ 清空所有題目</button>
                                         </div>
@@ -2150,8 +2728,56 @@
                                     </div>
                                 </div>
                             )}
+
+                            {tab === 'reports' && (
+                                <div className="space-y-6">
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                        <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2"><i className="fas fa-file-pdf"></i> 班級 & 全年級報告</h3>
+                                        <div className="flex gap-2 flex-wrap">
+                                            <button onClick={downloadClassReport} disabled={downloading} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 disabled:opacity-50">
+                                                <i className="fas fa-school"></i> 下載本班完整報告（封面 + 各生明細）
+                                            </button>
+                                            <button onClick={downloadGradeReport} disabled={downloading} className="bg-purple-600 text-white px-4 py-2 rounded font-bold hover:bg-purple-700 disabled:opacity-50">
+                                                <i className="fas fa-graduation-cap"></i> 下載全年級報告（含各班比較）
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-blue-700 mt-2">本班報告 = 1 頁封面 + {students.length} 頁學生明細（多人數時可能需 30 秒以上）。產生中請勿關閉視窗。</p>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><i className="fas fa-user-graduate"></i> 個別學生報告</h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                            {[...students].sort((a, b) => parseInt(a.seat) - parseInt(b.seat)).map(s => {
+                                                const acc = (s.totalQuizQuestions || 0) > 0 ? Math.round(((s.totalQuizCorrect || 0) / s.totalQuizQuestions) * 100) : null;
+                                                return (
+                                                    <button key={s.id} onClick={() => downloadOneStudent(s)} disabled={downloading} className="bg-white border p-3 rounded hover:bg-emerald-50 hover:border-emerald-400 text-left disabled:opacity-50 transition">
+                                                        <div className="text-sm font-bold text-slate-800">{s.seat}號 {s.name}</div>
+                                                        <div className="text-xs text-slate-400">{s.nickname || '—'} {acc !== null && `· 答對率 ${acc}%`}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {downloading && (
+                                        <div className="text-center text-blue-600 font-bold animate-pulse bg-blue-50 p-4 rounded border border-blue-200">
+                                            <i className="fas fa-spinner fa-spin mr-2"></i> PDF 產生中... 請稍候，產生完成後會自動下載
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
+
+                    {pdfPages && (
+                        <div style={{ position: 'fixed', left: -99999, top: 0, zIndex: -1 }}>
+                            {pdfPages.pages.map((page, i) => (
+                                <div key={i} ref={el => pdfPageRefs.current[i] = el}>
+                                    {page}
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
                     {msg && <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl font-bold flex items-center gap-2"><i className="fas fa-info-circle"></i> {msg}<button onClick={() => setMsg(null)} className="ml-2 text-white/70 hover:text-white">×</button></div>}
                     {editStudent && <EditStatsModal student={editStudent} onClose={() => setEditStudent(null)} onSave={handleSaveStats} />}
