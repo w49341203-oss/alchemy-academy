@@ -220,6 +220,14 @@
         };
         const ALL_CHAPTERS = Object.keys(CHAPTER_NAMES);
 
+        // localStorage 在 data: URL / 部分無痕模式下會丟 SecurityError，包成安全版
+        const safeStorage = {
+            get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+            set(k, v) { try { localStorage.setItem(k, v); } catch { } },
+            remove(k) { try { localStorage.removeItem(k); } catch { } },
+            clear() { try { localStorage.clear(); } catch { } }
+        };
+
         // ============================================================
         // Shop items (codified — not stored in Firestore)
         // ============================================================
@@ -985,7 +993,7 @@
                             </button>
                         </div>
                         <div className="mt-6 pt-6 border-t border-slate-100 text-center flex justify-between items-center">
-                            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-xs text-red-300 hover:text-red-500">清除暫存</button>
+                            <button onClick={() => { safeStorage.clear(); window.location.reload(); }} className="text-xs text-red-300 hover:text-red-500">清除暫存</button>
                             <button onClick={() => setMode(mode === 'student' ? 'teacher' : 'student')} className="text-sm text-slate-400 hover:text-blue-600 font-bold underline decoration-2 decoration-blue-100 hover:decoration-blue-600 underline-offset-4 transition-all">
                                 {mode === 'student' ? '我是老師' : '我是學生'}
                             </button>
@@ -1622,7 +1630,7 @@
                         <p className="font-bold text-lg bg-slate-50 p-3 rounded border border-slate-200">{q.question}</p>
                         {q.imageUrl && <img src={q.imageUrl} className="max-w-full max-h-60 mx-auto rounded border" onError={(e) => e.target.style.display = 'none'} />}
                         <div>
-                            {["A", "B", "C", "D"].map(L => q.options[L] && (
+                            {["A", "B", "C", "D"].map(L => q.options?.[L] && (
                                 <button
                                     key={L}
                                     onClick={() => setSelectedOption(L)}
@@ -1674,7 +1682,7 @@
                         <p className="font-bold text-lg">{question.question}</p>
                         {question.imageUrl && <img src={question.imageUrl} className="max-w-full max-h-60 mx-auto rounded border" onError={(e) => e.target.style.display = 'none'} />}
                         <div>
-                            {["A", "B", "C", "D"].map(L => question.options[L] && (
+                            {["A", "B", "C", "D"].map(L => question.options?.[L] && (
                                 <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'border-red-600 bg-red-100' : ''}`}>
                                     <span className="label">{L}</span>{question.options[L]}
                                 </button>
@@ -1835,7 +1843,7 @@
                                 <div className="bg-gray-100 p-4 rounded font-bold">{pkData.question.question}</div>
                                 {pkData.question.imageUrl && <img src={pkData.question.imageUrl} className="max-w-full max-h-60 mx-auto rounded border" onError={(e) => e.target.style.display = 'none'} />}
                                 <div>
-                                    {["A", "B", "C", "D"].map(L => pkData.question.options[L] && (
+                                    {["A", "B", "C", "D"].map(L => pkData.question?.options?.[L] && (
                                         <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'border-red-600 bg-red-100' : ''}`}>
                                             <span className="label">{L}</span>{pkData.question.options[L]}
                                         </button>
@@ -1981,8 +1989,17 @@
                     window.firebaseModules.where('status', '==', 'active')
                 );
                 const unsubPk = window.firebaseModules.onSnapshot(pkQuery, (snap) => {
-                    if (!snap.empty) setPkModal({ id: snap.docs[0].id, ...snap.docs[0].data() });
-                    else setPkModal(null);
+                    if (!snap.empty) {
+                        const d = snap.docs[0];
+                        const data = d.data();
+                        // 自動清掉舊版 / 壞掉的 PK 資料（沒有 question 或 options 的）
+                        if (!data.question || !data.question.options || typeof data.question.options !== 'object') {
+                            window.firebaseModules.deleteDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', d.id)).catch(() => { });
+                            setPkModal(null);
+                            return;
+                        }
+                        setPkModal({ id: d.id, ...data });
+                    } else setPkModal(null);
                 });
                 const notifQuery = window.firebaseModules.query(
                     window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'),
@@ -2814,8 +2831,8 @@
 
             useEffect(() => {
                 if (!ready || !db) return;
-                const savedClass = localStorage.getItem('RPG_CLASS');
-                const savedUid = localStorage.getItem('RPG_UID');
+                const savedClass = safeStorage.get('RPG_CLASS');
+                const savedUid = safeStorage.get('RPG_UID');
                 (async () => {
                     if (savedClass) {
                         setClassId(savedClass);
@@ -2829,7 +2846,7 @@
                                 setUser({ id: savedUid, ...docSnap.data() });
                                 setView('student_dash');
                             } else {
-                                localStorage.removeItem('RPG_UID');
+                                safeStorage.remove('RPG_UID');
                                 setView('login');
                             }
                         } else { setView('login'); }
@@ -2837,7 +2854,7 @@
                 })();
             }, [ready, db]);
 
-            const handleClassSelect = (c) => { setClassId(c); localStorage.setItem('RPG_CLASS', c); setView('login'); };
+            const handleClassSelect = (c) => { setClassId(c); safeStorage.set('RPG_CLASS', c); setView('login'); };
             const handleStudentLogin = async (seat, pwd) => {
                 if (!seat || !pwd) return alert("請輸入完整資訊");
                 const uid = `${classId}-${seat}`;
@@ -2847,7 +2864,7 @@
                     const data = docSnap.data();
                     if (data.password === pwd) {
                         setUser({ id: uid, ...data });
-                        localStorage.setItem('RPG_UID', uid);
+                        safeStorage.set('RPG_UID', uid);
                         setView('student_dash');
                     } else { alert("密碼錯誤"); }
                 } else {
@@ -2860,17 +2877,17 @@
                 const newUser = { name, nickname, gender, avatar, password, seat: user.seat, ...INITIAL_STATS, lastLoginDate: formatDate(new Date()) };
                 await window.firebaseModules.setDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', uid), newUser);
                 setUser({ id: uid, ...newUser });
-                localStorage.setItem('RPG_UID', uid);
+                safeStorage.set('RPG_UID', uid);
                 setView('student_dash');
             };
             const handleTeacherLogin = (pwd) => {
                 if (pwd === DEFAULT_TEACHER_PWD) {
                     setUser({ role: 'teacher' });
-                    localStorage.setItem('RPG_UID', 'TEACHER');
+                    safeStorage.set('RPG_UID', 'TEACHER');
                     setView('teacher_dash');
                 } else alert("老師密碼錯誤");
             };
-            const handleLogout = () => { localStorage.removeItem('RPG_UID'); setUser(null); setView('login'); };
+            const handleLogout = () => { safeStorage.remove('RPG_UID'); setUser(null); setView('login'); };
 
             if (!ready) return <Loading msg="正在連接元素世界..." />;
             if (error) return <ErrorScreen msg={error} />;
@@ -2899,8 +2916,29 @@
             );
         };
 
+        class ErrorBoundary extends React.Component {
+            constructor(p) { super(p); this.state = { err: null }; }
+            static getDerivedStateFromError(err) { return { err }; }
+            componentDidCatch(err, info) { console.error("ErrorBoundary caught:", err, info); }
+            render() {
+                if (this.state.err) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center p-4 text-white">
+                            <div className="glass-panel p-8 max-w-lg text-slate-800 text-center">
+                                <h2 className="text-2xl font-bold mb-4 text-red-600">畫面渲染失敗</h2>
+                                <p className="mb-4 text-sm">錯誤訊息：<code className="bg-red-50 px-2 py-1 rounded">{this.state.err.message}</code></p>
+                                <p className="text-xs text-slate-500 mb-4">可能原因：題庫資料缺漏、或舊版 PK 資料殘留。可嘗試登出後重新登入。</p>
+                                <button onClick={() => { try { localStorage.clear(); } catch { } location.reload(); }} className="bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-700">清除登入並重新整理</button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
     </script>
 </body>
 </html>
