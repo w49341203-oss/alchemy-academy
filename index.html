@@ -151,6 +151,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
+        const APP_VERSION = "v2.1"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         const DEFAULT_TEACHER_PWD = "admin";
         const ONE_DAY_MS = 86400000;
@@ -2579,28 +2580,47 @@
                     return;
                 }
                 setShowResetConfirm(false);
-                setMsg("正在刪除資料...");
+                setMsg("正在收集要刪除的資料...");
                 try {
+                    const fm = window.firebaseModules;
                     const classesToReset = resetTargetClass === 'all' ? CLASSES : [resetTargetClass];
                     let allRefs = [];
+                    // 1. 學生文件 + 每位學生的答題紀錄（quiz_history 子集合不會自動連帶刪除）
                     for (let c of classesToReset) {
-                        const q = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'classes', c, 'users');
-                        const snap = await window.firebaseModules.getDocs(q);
-                        snap.forEach(d => allRefs.push(d.ref));
+                        const snap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'classes', c, 'users'));
+                        for (const d of snap.docs) {
+                            const histSnap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'classes', c, 'users', d.id, 'quiz_history'));
+                            histSnap.forEach(h => allRefs.push(h.ref));
+                            allRefs.push(d.ref);
+                        }
                     }
+                    // 2. 進行中的 PK（新學期沒有對象了）
+                    const pkSnap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks'));
+                    pkSnap.forEach(d => {
+                        const p = d.data();
+                        if (resetTargetClass === 'all' || p.attackerClass === resetTargetClass || p.defenderClass === resetTargetClass) allRefs.push(d.ref);
+                    });
+                    // 3. 未讀的 PK 戰報通知（targetId 格式為「班-座號」）
+                    const notifSnap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'));
+                    notifSnap.forEach(d => {
+                        const t = d.data().targetId || "";
+                        if (resetTargetClass === 'all' || t.startsWith(resetTargetClass + "-")) allRefs.push(d.ref);
+                    });
+                    // 分批刪除（Firestore 每批上限 500，取 400 保守值）
                     let deleted = 0;
                     for (let i = 0; i < allRefs.length; i += 400) {
                         const chunk = allRefs.slice(i, i + 400);
-                        const batch = window.firebaseModules.writeBatch(db);
+                        const batch = fm.writeBatch(db);
                         chunk.forEach(r => batch.delete(r));
                         await batch.commit();
                         deleted += chunk.length;
+                        setMsg(`刪除中... ${deleted}/${allRefs.length}`);
                     }
                     // 同步重置 globalLimits
                     if (resetTargetClass === 'all') {
-                        await window.firebaseModules.setDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'public', 'data', 'globalLimits', 'main'), {}, { merge: false });
+                        await fm.setDoc(fm.doc(db, 'artifacts', APP_ID, 'public', 'data', 'globalLimits', 'main'), {}, { merge: false });
                     }
-                    setMsg(`已重置 ${deleted} 筆學生資料`);
+                    setMsg(`重置完成：共刪除 ${deleted} 筆（學生資料、答題紀錄、PK、通知）`);
                 } catch (e) { setMsg("重置失敗: " + e.message); }
             };
 
@@ -2610,7 +2630,7 @@
                 <div className="max-w-6xl mx-auto p-4">
                     <div className="flex justify-between items-center mb-6">
                         <div>
-                            <h1 className="text-3xl font-black text-white drop-shadow-md">老師中控台 ({classId}班)</h1>
+                            <h1 className="text-3xl font-black text-white drop-shadow-md">老師中控台 ({classId}班) <span className="text-xs font-normal text-white/40">{APP_VERSION}</span></h1>
                             <div className="text-xs text-yellow-300 mt-1">目前範圍：{activeInfo.label}{activeInfo.maintenance && "（維護期，學生無法答題）"}</div>
                         </div>
                         <button onClick={onLogout} className="bg-slate-700/80 text-white px-4 py-2 rounded font-bold hover:bg-slate-600">登出</button>
@@ -2804,11 +2824,11 @@
                         <Modal title="⚠️ 危險操作：重置資料" onClose={() => setShowResetConfirm(false)}>
                             <div className="space-y-4 text-center">
                                 <div className="text-red-600 font-bold text-lg bg-red-50 p-4 rounded-lg border border-red-200">
-                                    即將刪除 <span className="underline">{resetTargetClass === 'all' ? '全校' : `${resetTargetClass}班`}</span> 所有學生資料{resetTargetClass === 'all' && "與全校升級石銷售記錄"}。
-                                    <br />此操作無法復原！
+                                    即將刪除 <span className="underline">{resetTargetClass === 'all' ? '全校' : `${resetTargetClass}班`}</span> 所有學生資料、答題紀錄、PK 資料與通知{resetTargetClass === 'all' && "，並重置全校升級石銷售記錄"}。
+                                    <br />（題庫會保留）此操作無法復原！
                                 </div>
                                 <p className="text-slate-600 text-sm">請輸入 <strong>RESET</strong> 以確認：</p>
-                                <input value={resetConfirmCode} onChange={e => setResetConfirmCode(e.target.value)} className="w-full p-3 border-2 border-red-300 rounded text-center font-bold tracking-widest uppercase focus:border-red-600 outline-none" placeholder="輸入 RESET" />
+                                <input value={resetConfirmCode} onChange={e => setResetConfirmCode(e.target.value.toUpperCase())} className="w-full p-3 border-2 border-red-300 rounded text-center font-bold tracking-widest uppercase focus:border-red-600 outline-none" placeholder="輸入 RESET" />
                                 <div className="flex gap-2 justify-center mt-4">
                                     <button onClick={() => setShowResetConfirm(false)} className="px-4 py-2 bg-slate-200 rounded font-bold text-slate-600">取消</button>
                                     <button onClick={executeReset} disabled={resetConfirmCode !== 'RESET'} className="px-6 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 disabled:opacity-50">確認刪除</button>
@@ -2898,7 +2918,8 @@
                     {view === 'class_select' && (
                         <div className="flex flex-col items-center justify-center min-h-screen p-4 text-white">
                             <h1 className="text-5xl md:text-7xl font-black mb-2 tracking-widest gold-text" style={{ fontFamily: 'Cinzel, serif' }}>煉金學園</h1>
-                            <h2 className="text-xl md:text-2xl font-bold mb-12 tracking-[0.5em] silver-text uppercase">Alchemy Academy · 元素之戰</h2>
+                            <h2 className="text-xl md:text-2xl font-bold mb-2 tracking-[0.5em] silver-text uppercase">Alchemy Academy · 元素之戰</h2>
+                            <div className="text-xs text-white/40 mb-10">{APP_VERSION}</div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl px-4">
                                 {CLASSES.map(c => (
                                     <button key={c} onClick={() => handleClassSelect(c)} className="glass-panel p-6 md:p-8 text-2xl font-black text-slate-800 hover:bg-white hover:scale-105 transition border-2 border-transparent hover:border-yellow-400">
