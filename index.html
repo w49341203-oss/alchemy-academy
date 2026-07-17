@@ -151,9 +151,15 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.1"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.2"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
-        const DEFAULT_TEACHER_PWD = "admin";
+        // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
+        const TEACHER_PWD_SALT = "alchemy-2026";
+        const TEACHER_PWD_HASH = "512bd55a98fd69aab75f266d485c0520e3c8da6b9742d9d013937d9aabeb4ae8";
+        const sha256Hex = async (text) => {
+            const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        };
         const ONE_DAY_MS = 86400000;
 
         const AVATARS = [
@@ -186,7 +192,7 @@
             { name: "硫", min: 3300, max: 3599, hp: 80, atk: 120, def: 90 },
             { name: "氯", min: 3600, max: 3899, hp: 80, atk: 150, def: 90 },
             { name: "氬", min: 3900, max: 4199, hp: 90, atk: 150, def: 100 },
-            { name: "鉀", min: 4300, max: 4699, hp: 100, atk: 180, def: 100 },
+            { name: "鉀", min: 4200, max: 4699, hp: 100, atk: 180, def: 100 },
             { name: "鈣", min: 4700, max: 5099, hp: 150, atk: 180, def: 120 },
             { name: "鈧", min: 5100, max: 99999, hp: 160, atk: 180, def: 130 }
         ];
@@ -200,6 +206,7 @@
             equippedWeapon: null, equippedArmor: null, equippedAccessory: null,
             inventory: [], buffs: [],
             dailyQuizCount: 0, dailyPkAttacks: 0, dailyPkDefenses: 0,
+            heartsSentToday: {},
             chapterStats: {},
             guildId: null,
             usedRevives: 0
@@ -1245,7 +1252,7 @@
                             throw "復活符會在 HP 歸零時自動生效，不需要主動使用";
                         } else if (item.consumable === "extraQuiz") {
                             if ((uData.dailyQuizCount || 0) === 0) throw "今日尚未答題，不需要使用";
-                            if ((uData.dailyQuizCount || 0) >= 4) throw "今日已用過機會券";
+                            if (uData.extraQuizUsed) throw "今日已用過機會券（每日限 1 張）";
                             upd.dailyQuizCount = Math.max(0, (uData.dailyQuizCount || 0) - 1);
                             upd.extraQuizUsed = true;
                         } else if (item.consumable === "rerollQuiz") {
@@ -1370,13 +1377,23 @@
 
             const filtered = filterClass === 'all' ? users : users.filter(u => u.class === filterClass);
 
+            const sendingHeartRef = useRef(false); // 防連點
             const sendHeart = async (target) => {
                 if (target.id === user.id) return setMsg({ title: "提示", content: "不能送愛心給自己喔！" });
-                await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', target.class, 'users', target.id), {
-                    hearts: window.firebaseModules.increment(1)
-                });
-                setMsg({ title: "愛心發送", content: `你送了一顆愛心給 ${target.nickname || "神秘人"}！` });
-                setSelectedUser(null);
+                if ((user.heartsSentToday || {})[target.id]) return setMsg({ title: "今天已送過", content: "每天對同一位同學只能送一顆愛心喔！" });
+                if (sendingHeartRef.current) return;
+                sendingHeartRef.current = true;
+                try {
+                    const fm = window.firebaseModules;
+                    await fm.updateDoc(fm.doc(db, 'artifacts', APP_ID, 'classes', target.class, 'users', target.id), {
+                        hearts: fm.increment(1)
+                    });
+                    await fm.updateDoc(fm.doc(db, 'artifacts', APP_ID, 'classes', user.class || classId, 'users', user.id), {
+                        heartsSentToday: { ...(user.heartsSentToday || {}), [target.id]: true }
+                    });
+                    setMsg({ title: "愛心發送", content: `你送了一顆愛心給 ${target.nickname || "神秘人"}！` });
+                    setSelectedUser(null);
+                } finally { sendingHeartRef.current = false; }
             };
 
             const startPK = async (target) => {
@@ -1464,6 +1481,7 @@
             const [finished, setFinished] = useState(false);
             const [errorMsg, setErrorMsg] = useState(null);
             const [selectedOption, setSelectedOption] = useState(null);
+            const submittingRef = useRef(false); // 防連點：避免同一題送出兩次
 
             useEffect(() => {
                 const fetchQ = async () => {
@@ -1486,6 +1504,8 @@
             }, []);
 
             const submitAnswer = (letter) => {
+                if (submittingRef.current) return;
+                submittingRef.current = true;
                 const q = questions[currentQ];
                 const isCorrect = letter === q.answer;
                 const reward = isCorrect ? {
@@ -1511,8 +1531,9 @@
 
                 if (currentQ < questions.length - 1) {
                     setCurrentQ(currentQ + 1);
+                    submittingRef.current = false; // 進入下一題後解鎖
                 } else {
-                    finishQuiz(newResults);
+                    finishQuiz(newResults); // 最後一題：保持鎖定，避免結算跑兩次
                 }
             };
 
@@ -1651,28 +1672,36 @@
         // ============================================================
         const PKAttackerModal = ({ user, target, question, db, classId, onClose, setMsg }) => {
             const [answer, setAnswer] = useState(null);
+            const sendingRef = useRef(false); // 防連點：避免發起兩場 PK
             const submitAttack = async () => {
                 if (!answer) return;
-                const isCorrect = answer === question.answer;
-                const { addDoc, collection, doc, updateDoc, increment } = window.firebaseModules;
-                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks'), {
-                    attackerId: user.id,
-                    attackerClass: user.class || classId,
-                    defenderId: target.id,
-                    defenderClass: target.class,
-                    question: question,
-                    attackerCorrect: isCorrect,
-                    attackerAnswer: answer,
-                    attackerAtk: getEffectiveStats(user).atk,
-                    attackerWarGodRage: hasActiveBuff(user, "war_god_rage"),
-                    status: 'active',
-                    timestamp: Date.now()
-                });
-                await updateDoc(doc(db, 'artifacts', APP_ID, 'classes', user.class || classId, 'users', user.id), {
-                    dailyPkAttacks: increment(1)
-                });
-                onClose();
-                setMsg({ title: "PK 發起成功", content: "等待對方回應後將自動結算。" });
+                if (sendingRef.current) return;
+                sendingRef.current = true;
+                try {
+                    const isCorrect = answer === question.answer;
+                    const { addDoc, collection, doc, updateDoc, increment } = window.firebaseModules;
+                    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks'), {
+                        attackerId: user.id,
+                        attackerClass: user.class || classId,
+                        defenderId: target.id,
+                        defenderClass: target.class,
+                        question: question,
+                        attackerCorrect: isCorrect,
+                        attackerAnswer: answer,
+                        attackerAtk: getEffectiveStats(user).atk,
+                        attackerWarGodRage: hasActiveBuff(user, "war_god_rage"),
+                        status: 'active',
+                        timestamp: Date.now()
+                    });
+                    await updateDoc(doc(db, 'artifacts', APP_ID, 'classes', user.class || classId, 'users', user.id), {
+                        dailyPkAttacks: increment(1)
+                    });
+                    onClose();
+                    setMsg({ title: "PK 發起成功", content: "等待對方回應後將自動結算。" });
+                } catch (e) {
+                    sendingRef.current = false; // 失敗時解鎖，允許重試
+                    setMsg({ title: "PK 發起失敗", content: e.message || "請稍後再試" });
+                }
             };
 
             return (
@@ -1698,9 +1727,12 @@
         const PKDefenderModal = ({ user, pkData, db, classId, onComplete }) => {
             const [answer, setAnswer] = useState(null);
             const [result, setResult] = useState(null);
+            const resolvingRef = useRef(false); // 防連點：避免同一場 PK 結算兩次
 
             const resolvePK = async () => {
                 if (!answer) return;
+                if (resolvingRef.current) return;
+                resolvingRef.current = true;
                 const defenderCorrect = answer === pkData.question.answer;
                 const attackerCorrect = pkData.attackerCorrect;
                 const qRewards = pkData.question;
@@ -1711,14 +1743,18 @@
                 const defenderRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
                 const attClass = pkData.attackerClass || classId;
                 const attackerRef = doc(db, 'artifacts', APP_ID, 'classes', attClass, 'users', pkData.attackerId);
+                const pkRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id);
 
                 try {
                     let useRevive = { attacker: false, defender: false };
                     await runTransaction(db, async (t) => {
+                        // 先確認這場 PK 還存在（防止連點/多裝置造成重複結算）
+                        const pkDoc = await t.get(pkRef);
+                        if (!pkDoc.exists()) throw "這場 PK 已經結算過了";
                         const dDoc = await t.get(defenderRef);
                         const aDoc = await t.get(attackerRef);
                         if (!aDoc.exists()) {
-                            t.delete(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id));
+                            t.delete(pkRef);
                             throw "對手已消失";
                         }
                         const dData = dDoc.data();
@@ -1726,7 +1762,7 @@
 
                         // PK 護盾防護
                         if (hasActiveBuff(dData, "pk_shield")) {
-                            t.delete(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id));
+                            t.delete(pkRef);
                             throw "你有 PK 護盾，攻擊已被擋下";
                         }
 
@@ -1816,7 +1852,6 @@
 
                         t.update(defenderRef, dUpd);
                         t.update(attackerRef, aUpd);
-                        const pkRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_pks', pkData.id);
                         t.delete(pkRef);
                     });
 
@@ -1829,6 +1864,7 @@
                     setResult(defenderLog);
                 } catch (e) {
                     console.error(e);
+                    resolvingRef.current = false; // 失敗時解鎖，允許重試
                     setResult(typeof e === "string" ? e : "PK 處理失敗");
                 }
             };
@@ -2042,26 +2078,38 @@
             }, [currentUser.id, currentUser.baseAtk]);
 
             // 每日結算（重設 daily 計數、補滿 HP、發送登入獎勵、清理過期 buff）
+            // 用 transaction：同帳號多裝置同時開，也只會領到一次獎勵
             useEffect(() => {
                 if (!currentUser || !currentUser.lastLoginDate) return;
                 const today = formatDate(new Date());
                 if (currentUser.lastLoginDate !== today) {
                     (async () => {
-                        const { doc, updateDoc } = window.firebaseModules;
+                        const { doc, runTransaction } = window.firebaseModules;
                         const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
-                        const eff = getEffectiveStats(currentUser);
-                        const cleanedBuffs = cleanExpiredBuffs(currentUser.buffs);
-                        await updateDoc(userRef, {
-                            hp: eff.maxHp,
-                            gold: (currentUser.gold || 0) + 50,
-                            totalGoldEarned: (currentUser.totalGoldEarned || 0) + 50,
-                            lastLoginDate: today,
-                            dailyQuizCount: 0,
-                            dailyPkAttacks: 0,
-                            dailyPkDefenses: 0,
-                            buffs: cleanedBuffs
-                        });
-                        setMsg({ title: "每日登入獎勵", content: "歡迎回來！HP 已補滿，獲得 50 金幣！" });
+                        let awarded = false;
+                        try {
+                            await runTransaction(db, async (t) => {
+                                const snap = await t.get(userRef);
+                                if (!snap.exists()) { awarded = false; return; }
+                                const d = snap.data();
+                                if (d.lastLoginDate === today) { awarded = false; return; } // 別台裝置已領過
+                                const eff = getEffectiveStats(d);
+                                t.update(userRef, {
+                                    hp: eff.maxHp,
+                                    gold: (d.gold || 0) + 50,
+                                    totalGoldEarned: (d.totalGoldEarned || 0) + 50,
+                                    lastLoginDate: today,
+                                    dailyQuizCount: 0,
+                                    dailyPkAttacks: 0,
+                                    dailyPkDefenses: 0,
+                                    extraQuizUsed: false,
+                                    heartsSentToday: {},
+                                    buffs: cleanExpiredBuffs(d.buffs)
+                                });
+                                awarded = true;
+                            });
+                        } catch (e) { console.error("每日結算失敗", e); }
+                        if (awarded) setMsg({ title: "每日登入獎勵", content: "歡迎回來！HP 已補滿，獲得 50 金幣！" });
                     })();
                 }
             }, [currentUser.lastLoginDate]);
@@ -2234,14 +2282,14 @@
                     <div className="space-y-3 p-1">
                         <div className="text-xs text-slate-500 mb-2">提示：基礎屬性是「不含裝備加成」的原始值。目前裝備後 ATK={eff.atk}、DEF={eff.def}、maxHP={eff.maxHp}</div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-xs font-bold text-slate-500">當前生命 (HP)</label><input type="number" value={stats.hp} onChange={e => setStats({ ...stats, hp: parseInt(e.target.value) })} className="border p-2 w-full rounded" /></div>
-                            <div><label className="text-xs font-bold text-slate-500">基礎最大生命</label><input type="number" value={stats.baseMaxHp} onChange={e => setStats({ ...stats, baseMaxHp: parseInt(e.target.value) })} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">當前生命 (HP)</label><input type="number" value={stats.hp} onChange={e => setStats({ ...stats, hp: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">基礎最大生命</label><input type="number" value={stats.baseMaxHp} onChange={e => setStats({ ...stats, baseMaxHp: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-xs font-bold text-slate-500">基礎 ATK</label><input type="number" value={stats.baseAtk} onChange={e => setStats({ ...stats, baseAtk: parseInt(e.target.value) })} className="border p-2 w-full rounded" /></div>
-                            <div><label className="text-xs font-bold text-slate-500">基礎 DEF</label><input type="number" value={stats.baseDef} onChange={e => setStats({ ...stats, baseDef: parseInt(e.target.value) })} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">基礎 ATK</label><input type="number" value={stats.baseAtk} onChange={e => setStats({ ...stats, baseAtk: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">基礎 DEF</label><input type="number" value={stats.baseDef} onChange={e => setStats({ ...stats, baseDef: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
                         </div>
-                        <div><label className="text-xs font-bold text-slate-500">金幣 (Gold)</label><input type="number" value={stats.gold} onChange={e => setStats({ ...stats, gold: parseInt(e.target.value) })} className="border p-2 w-full rounded" /></div>
+                        <div><label className="text-xs font-bold text-slate-500">金幣 (Gold)</label><input type="number" value={stats.gold} onChange={e => setStats({ ...stats, gold: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
                         <button onClick={() => onSave(stats)} className="w-full bg-blue-600 text-white py-3 mt-4 rounded-lg font-bold shadow hover:bg-blue-700">儲存變更</button>
                     </div>
                 </Modal>
@@ -2509,15 +2557,15 @@
             // 題目上傳格式：章節[Tab]題目[Tab]選項A[Tab]選項B[Tab]選項C[Tab]選項D[Tab]正解[Tab]圖片URL[Tab]金幣[Tab]HP[Tab]ATK[Tab]DEF
             const uploadQuestions = async () => {
                 const lines = qInput.trim().split('\n');
-                const batch = window.firebaseModules.writeBatch(db);
                 const colRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
-                let count = 0, failed = 0;
+                // 分批（Firestore 每批上限 500，取 400 保守值）
+                let count = 0, failed = 0, batches = [], current = window.firebaseModules.writeBatch(db), inBatch = 0;
                 lines.forEach(line => {
                     const p = line.split('\t');
                     if (p.length < 7) { failed++; return; }
                     if (!ALL_CHAPTERS.includes(p[0].trim())) { failed++; return; }
                     if (!["A", "B", "C", "D"].includes(p[6].trim().toUpperCase())) { failed++; return; }
-                    batch.set(window.firebaseModules.doc(colRef), {
+                    current.set(window.firebaseModules.doc(colRef), {
                         chapter: p[0].trim(),
                         question: p[1].trim(),
                         options: { A: p[2].trim(), B: p[3].trim(), C: p[4].trim(), D: p[5].trim() },
@@ -2529,9 +2577,11 @@
                         def: parseInt(p[11]) || 0,
                         timestamp: Date.now()
                     });
-                    count++;
+                    count++; inBatch++;
+                    if (inBatch >= 400) { batches.push(current); current = window.firebaseModules.writeBatch(db); inBatch = 0; }
                 });
-                await batch.commit();
+                if (inBatch > 0) batches.push(current);
+                for (const b of batches) await b.commit();
                 setMsg(`成功上傳 ${count} 題（失敗 ${failed} 行）`);
                 setQInput("");
             };
@@ -2877,7 +2927,11 @@
             const handleClassSelect = (c) => { setClassId(c); safeStorage.set('RPG_CLASS', c); setView('login'); };
             const handleStudentLogin = async (seat, pwd) => {
                 if (!seat || !pwd) return alert("請輸入完整資訊");
-                const uid = `${classId}-${seat}`;
+                // 座號正規化：「05」和「5」視為同一號，避免產生分身帳號
+                const seatNum = parseInt(seat, 10);
+                if (isNaN(seatNum) || seatNum < 1 || seatNum > 99) return alert("請輸入有效座號（1~99）");
+                const seatStr = String(seatNum);
+                const uid = `${classId}-${seatStr}`;
                 const docRef = window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', uid);
                 const docSnap = await window.firebaseModules.getDoc(docRef);
                 if (docSnap.exists()) {
@@ -2888,7 +2942,7 @@
                         setView('student_dash');
                     } else { alert("密碼錯誤"); }
                 } else {
-                    setUser({ id: uid, seat: seat });
+                    setUser({ id: uid, seat: seatStr });
                     setView('register');
                 }
             };
@@ -2900,12 +2954,17 @@
                 safeStorage.set('RPG_UID', uid);
                 setView('student_dash');
             };
-            const handleTeacherLogin = (pwd) => {
-                if (pwd === DEFAULT_TEACHER_PWD) {
-                    setUser({ role: 'teacher' });
-                    safeStorage.set('RPG_UID', 'TEACHER');
-                    setView('teacher_dash');
-                } else alert("老師密碼錯誤");
+            const handleTeacherLogin = async (pwd) => {
+                try {
+                    const h = await sha256Hex(TEACHER_PWD_SALT + (pwd || ""));
+                    if (h === TEACHER_PWD_HASH) {
+                        setUser({ role: 'teacher' });
+                        safeStorage.set('RPG_UID', 'TEACHER');
+                        setView('teacher_dash');
+                    } else alert("老師密碼錯誤");
+                } catch (e) {
+                    alert("此環境不支援密碼驗證（需要 https 或本機環境）");
+                }
             };
             const handleLogout = () => { safeStorage.remove('RPG_UID'); setUser(null); setView('login'); };
 
