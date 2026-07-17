@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>煉金學園 排行榜</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Cinzel:wght@700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            background-color: #0f172a;
+            min-height: 100vh;
+        }
+        .gold-text {
+            background: linear-gradient(to bottom, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .glass { background: rgba(255,255,255,0.92); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+        .rank-1 { color: #f59e0b; }
+        .rank-2 { color: #94a3b8; }
+        .rank-3 { color: #b45309; }
+    </style>
+</head>
+<body>
+    <div class="max-w-2xl mx-auto p-4">
+        <div class="text-center mb-4">
+            <h1 class="text-4xl font-black tracking-widest gold-text" style="font-family:Cinzel,serif">煉金學園</h1>
+            <div class="text-slate-400 text-sm tracking-[0.4em] mt-1">排行榜 LEADERBOARD <span class="text-slate-600 text-xs">v1.0</span></div>
+        </div>
+
+        <div id="tabs" class="flex gap-2 overflow-x-auto pb-2 mb-3 justify-start md:justify-center"></div>
+
+        <div class="glass p-4 min-h-[300px]">
+            <div id="status" class="text-center text-slate-400 py-10">
+                <div class="text-3xl mb-2 animate-pulse">⚗️</div>正在讀取排行榜...
+            </div>
+            <div id="list" class="space-y-2"></div>
+        </div>
+
+        <div class="flex items-center justify-between mt-3 text-xs text-slate-400 px-1">
+            <span id="updated"></span>
+            <button id="refreshBtn" onclick="doRefresh()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-1.5 rounded-full font-bold transition disabled:opacity-40">🔄 更新資料</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const config = {
+            apiKey: "AIzaSyDnL5amcs5hkWw_Fl_1IKfAw-KJeL7QGVs",
+            authDomain: "hh-2e4b8.firebaseapp.com",
+            projectId: "hh-2e4b8",
+            storageBucket: "hh-2e4b8.firebasestorage.app",
+            messagingSenderId: "612613725839",
+            appId: "1:612613725839:web:2b58ff031d04f330cc5afa"
+        };
+        const APP_ID = "science_game_v1";
+        const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
+
+        // 裝備加成表（與 index.html 的 SHOP_ITEMS 對應，改商店時要同步）
+        const ITEM_EFFECTS = {
+            "wood-stick": { atk: 3 }, "apprentice-sword": { atk: 8 }, "knight-sword": { atk: 15 },
+            "element-staff": { atk: 25 }, "phoenix-blade": { atk: 40 }, "thunder-spear": { atk: 70 }, "avalon": { atk: 120 },
+            "cloth": { def: 3 }, "leather-armor": { def: 8 }, "chain-mail": { def: 15 },
+            "knight-plate": { def: 25 }, "dragon-scale": { def: 40 }, "element-armor": { def: 70 }, "gods-protection": { def: 120 },
+            "common-amulet": { hp: 20 }, "element-necklace": { hp: 40 }, "life-star": { hp: 80 },
+            "phoenix-eye": { hp: 150 }, "eternal-gem": { hp: 300 }, "sage-heart": { hp: 500 }, "immortal-core": { hp: 1000 }
+        };
+
+        const CATS = [
+            { id: 'total',  name: '元素大師', emoji: '🏆' },
+            { id: 'xp',     name: '博學多聞', emoji: '📖' },
+            { id: 'gold',   name: '煉金大亨', emoji: '💰' },
+            { id: 'hearts', name: '校園人氣', emoji: '💖' },
+            { id: 'hp',     name: '堅韌肉盾', emoji: '❤️' },
+            { id: 'atk',    name: '破壞神',   emoji: '⚔️' },
+            { id: 'def',    name: '守護者',   emoji: '🛡️' }
+        ];
+
+        let db = null;
+        let users = [];
+        let category = 'total';
+        let lastFetch = 0;
+
+        const effStats = (u) => {
+            let atk = (u.baseAtk != null) ? u.baseAtk : (u.atk != null ? u.atk : 10);
+            let def = (u.baseDef != null) ? u.baseDef : (u.def != null ? u.def : 10);
+            let maxHp = (u.baseMaxHp != null) ? u.baseMaxHp : (u.maxHp != null ? u.maxHp : 100);
+            atk += (ITEM_EFFECTS[u.equippedWeapon] || {}).atk || 0;
+            def += (ITEM_EFFECTS[u.equippedArmor] || {}).def || 0;
+            maxHp += (ITEM_EFFECTS[u.equippedAccessory] || {}).hp || 0;
+            return { atk, def, maxHp };
+        };
+
+        const fetchAll = async () => {
+            let all = [];
+            for (const c of CLASSES) {
+                const snap = await getDocs(collection(db, 'artifacts', APP_ID, 'classes', c, 'users'));
+                snap.forEach(d => {
+                    const u = d.data();
+                    const eff = effStats(u);
+                    const score = (u.xp || 0) + (eff.maxHp + eff.atk + eff.def) + ((u.hearts || 0) * 10) + Math.floor((u.gold || 0) * 0.1);
+                    // 公開頁面只留暱稱，不帶真實姓名/座號
+                    all.push({
+                        nickname: u.nickname || "神秘人", class: c, avatar: u.avatar || "",
+                        levelName: u.levelName || "氫",
+                        xp: u.xp || 0, gold: u.gold || 0, hearts: u.hearts || 0,
+                        hp: eff.maxHp, atk: eff.atk, def: eff.def, total: Math.floor(score)
+                    });
+                });
+            }
+            users = all;
+            lastFetch = Date.now();
+            document.getElementById('updated').textContent = "資料時間：" + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+        };
+
+        const renderTabs = () => {
+            document.getElementById('tabs').innerHTML = CATS.map(c =>
+                `<button data-cat="${c.id}" class="cat-btn whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition ${category === c.id ? 'bg-yellow-500 text-slate-900 shadow-lg scale-105' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">${c.emoji} ${c.name}</button>`
+            ).join('');
+            document.querySelectorAll('.cat-btn').forEach(b => b.onclick = () => { category = b.dataset.cat; renderTabs(); renderList(); });
+        };
+
+        const renderList = () => {
+            const sorted = [...users].sort((a, b) => (b[category] || 0) - (a[category] || 0)).slice(0, 10);
+            const listEl = document.getElementById('list');
+            document.getElementById('status').style.display = 'none';
+            if (sorted.length === 0) {
+                listEl.innerHTML = `<div class="text-center text-slate-400 py-10">目前還沒有資料（新學期學生註冊後就會出現囉）</div>`;
+                return;
+            }
+            listEl.innerHTML = sorted.map((u, i) => `
+                <div class="flex items-center p-2.5 rounded-xl ${i < 3 ? 'bg-yellow-50 border border-yellow-200' : 'bg-slate-50 border border-slate-100'}">
+                    <div class="w-10 text-center font-black text-xl italic ${i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'text-slate-300'}">#${i + 1}</div>
+                    <img src="${u.avatar}" onerror="this.style.visibility='hidden'" class="w-10 h-10 rounded-full bg-white border border-slate-200 mx-2 object-cover">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-slate-800 truncate text-base">${escapeHtml(u.nickname)}</div>
+                        <div class="text-xs text-slate-400">${u.class}班 · 元素 ${escapeHtml(u.levelName)}</div>
+                    </div>
+                    <div class="font-mono font-black text-blue-600 text-xl">${u[category] || 0}</div>
+                </div>`).join('');
+            document.getElementById('status').style.display = 'none';
+        };
+
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+        window.doRefresh = async () => {
+            // 30 秒冷卻，避免一直重抓吃免費額度
+            if (Date.now() - lastFetch < 30000) return;
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true; btn.textContent = "更新中...";
+            try { await fetchAll(); renderList(); } catch (e) { console.error(e); }
+            btn.textContent = "🔄 更新資料";
+            setTimeout(() => { btn.disabled = false; }, 30000);
+        };
+
+        (async () => {
+            try {
+                const app = initializeApp(config);
+                await signInAnonymously(getAuth(app));
+                db = getFirestore(app);
+                renderTabs();
+                await fetchAll();
+                renderList();
+            } catch (e) {
+                console.error(e);
+                document.getElementById('status').innerHTML = `<div class="text-red-400">讀取失敗：${escapeHtml(e.message || e)}<br><span class="text-xs text-slate-500">請重新整理頁面再試</span></div>`;
+            }
+        })();
+    </script>
+</body>
+</html>
