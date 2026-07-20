@@ -151,7 +151,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.4"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.5"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -2476,8 +2476,8 @@
                             }
                         </div>
                         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                            <h4 className="font-bold text-emerald-800 mb-3"><i className="fas fa-medal text-emerald-500"></i> 表現優異（答對率 &gt; 85%）</h4>
-                            {top.length === 0 ? <div className="text-center text-slate-400 py-6 text-sm">還沒有出現學霸</div>
+                            <h4 className="font-bold text-emerald-800 mb-3"><i className="fas fa-medal text-emerald-500"></i> 表現優異（答對率 ≥ 85%，且累積答滿 5 題）</h4>
+                            {top.length === 0 ? <div className="text-center text-slate-400 py-6 text-sm">還沒有人達標（要累積答滿 5 題才列入，避免 3 題全對就被誤認為學霸）</div>
                                 : <div className="space-y-2 max-h-[300px] overflow-y-auto">
                                     {top.map((s, idx) => (
                                         <div key={s.id} className="bg-white p-3 rounded border border-emerald-100 flex justify-between items-center">
