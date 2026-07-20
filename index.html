@@ -151,7 +151,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.5"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.6"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -2114,6 +2114,31 @@
                     })();
                 }
             }, [currentUser.lastLoginDate]);
+
+            // 新手禮：每個帳號一生領一次（已註冊的舊生下次登入自動補發），用 transaction 防重複
+            useEffect(() => {
+                if (!currentUser || !currentUser.id || currentUser.welcomeGiftReceived) return;
+                (async () => {
+                    const { doc, runTransaction } = window.firebaseModules;
+                    const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
+                    let awarded = false;
+                    try {
+                        await runTransaction(db, async (t) => {
+                            const snap = await t.get(userRef);
+                            if (!snap.exists()) { awarded = false; return; }
+                            const d = snap.data();
+                            if (d.welcomeGiftReceived) { awarded = false; return; }
+                            t.update(userRef, {
+                                gold: (d.gold || 0) + 50,
+                                totalGoldEarned: (d.totalGoldEarned || 0) + 50,
+                                welcomeGiftReceived: true
+                            });
+                            awarded = true;
+                        });
+                    } catch (e) { console.error("新手禮發放失敗", e); }
+                    if (awarded) setMsg({ title: "🎁 新手禮", content: "歡迎來到煉金學園！新手禮 50 金幣入袋，去商店逛逛吧！" });
+                })();
+            }, [currentUser.id, currentUser.welcomeGiftReceived]);
 
             const drawDailyFortune = () => {
                 const fortunes = [
