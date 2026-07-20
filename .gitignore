@@ -1,0 +1,7 @@
+# 白名單模式：預設全部不上傳，只放行下面指定的檔案
+# （課本 PDF 有版權、題庫 JSON 含答案、工作紀錄是內部筆記——都不可上公開 GitHub）
+/*
+!/index.html
+!/rank.html
+!/images
+!/.gitignore
