@@ -151,7 +151,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.3"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.4"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -905,13 +905,13 @@
             const displayList = isTeacherMode ? sortedList : sortedList.slice(0, 10);
 
             const cats = [
-                { id: 'total', name: '元素大師', icon: 'fa-trophy', color: 'text-yellow-500' },
-                { id: 'xp', name: '博學多聞', icon: 'fa-book', color: 'text-blue-500' },
-                { id: 'gold', name: '煉金大亨', icon: 'fa-coins', color: 'text-yellow-600' },
-                { id: 'hearts', name: '校園人氣', icon: 'fa-heart', color: 'text-pink-500' },
-                { id: 'hp', name: '堅韌肉盾', icon: 'fa-shield-heart', color: 'text-red-500' },
-                { id: 'atk', name: '破壞神', icon: 'fa-khanda', color: 'text-orange-500' },
-                { id: 'def', name: '守護者', icon: 'fa-shield-alt', color: 'text-indigo-500' }
+                { id: 'total', name: '元素大師', icon: 'fa-trophy', color: 'text-yellow-500', desc: '綜合總分：經驗值＋戰力（HP+ATK+DEF）＋愛心×10＋金幣×0.1' },
+                { id: 'xp', name: '博學多聞', icon: 'fa-book', color: 'text-blue-500', desc: '每日答題累積的經驗值（XP），答得越勤分數越高' },
+                { id: 'gold', name: '煉金大亨', icon: 'fa-coins', color: 'text-yellow-600', desc: '目前持有的金幣數（花掉就不算囉）' },
+                { id: 'hearts', name: '校園人氣', icon: 'fa-heart', color: 'text-pink-500', desc: '收到同學送的愛心總數' },
+                { id: 'hp', name: '堅韌肉盾', icon: 'fa-shield-heart', color: 'text-red-500', desc: '最大生命值（含裝備加成）' },
+                { id: 'atk', name: '破壞神', icon: 'fa-khanda', color: 'text-orange-500', desc: '攻擊力（含裝備加成）' },
+                { id: 'def', name: '守護者', icon: 'fa-shield-alt', color: 'text-indigo-500', desc: '防禦力（含裝備加成）' }
             ];
 
             const getDisplayValue = (u) => {
@@ -937,11 +937,12 @@
                         ))}
                     </div>
                     <div className="glass-panel p-4 min-h-[300px]">
-                        <h3 className="font-bold text-center text-lg mb-4 text-slate-700 flex items-center justify-center gap-2">
+                        <h3 className="font-bold text-center text-lg mb-1 text-slate-700 flex items-center justify-center gap-2">
                             <i className={`fas ${cats.find(c => c.id === category).icon} text-xl`}></i>
                             {cats.find(c => c.id === category).name}榜
                             <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-500">{isTeacherMode ? "完整榜單" : "Top 10"}</span>
                         </h3>
+                        <p className="text-xs text-slate-400 text-center mb-4">{cats.find(c => c.id === category).desc}</p>
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                             {displayList.map((u, idx) => (
                                 <div key={u.id} className={`flex items-center p-2 rounded-lg transition ${currentUser && u.id === currentUser.id ? 'bg-yellow-50 border border-yellow-300 shadow-sm' : 'bg-white/50 border border-transparent'}`}>

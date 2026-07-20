@@ -29,10 +29,11 @@
     <div class="max-w-2xl mx-auto p-4">
         <div class="text-center mb-4">
             <h1 class="text-4xl font-black tracking-widest gold-text" style="font-family:Cinzel,serif">煉金學園</h1>
-            <div class="text-slate-400 text-sm tracking-[0.4em] mt-1">排行榜 LEADERBOARD <span class="text-slate-600 text-xs">v1.0</span></div>
+            <div class="text-slate-400 text-sm tracking-[0.4em] mt-1">排行榜 LEADERBOARD <span class="text-slate-600 text-xs">v1.1</span></div>
         </div>
 
-        <div id="tabs" class="flex gap-2 overflow-x-auto pb-2 mb-3 justify-start md:justify-center"></div>
+        <div id="tabs" class="flex gap-2 overflow-x-auto pb-2 mb-2 justify-start md:justify-center"></div>
+        <div id="catDesc" class="text-center text-slate-400 text-xs mb-3"></div>
 
         <div class="glass p-4 min-h-[300px]">
             <div id="status" class="text-center text-slate-400 py-10">
@@ -74,13 +75,13 @@
         };
 
         const CATS = [
-            { id: 'total',  name: '元素大師', emoji: '🏆' },
-            { id: 'xp',     name: '博學多聞', emoji: '📖' },
-            { id: 'gold',   name: '煉金大亨', emoji: '💰' },
-            { id: 'hearts', name: '校園人氣', emoji: '💖' },
-            { id: 'hp',     name: '堅韌肉盾', emoji: '❤️' },
-            { id: 'atk',    name: '破壞神',   emoji: '⚔️' },
-            { id: 'def',    name: '守護者',   emoji: '🛡️' }
+            { id: 'total',  name: '元素大師', emoji: '🏆', desc: '綜合總分：經驗值＋戰力（HP+ATK+DEF）＋愛心×10＋金幣×0.1' },
+            { id: 'xp',     name: '博學多聞', emoji: '📖', desc: '每日答題累積的經驗值（XP），答得越勤分數越高' },
+            { id: 'gold',   name: '煉金大亨', emoji: '💰', desc: '目前持有的金幣數（花掉就不算囉）' },
+            { id: 'hearts', name: '校園人氣', emoji: '💖', desc: '收到同學送的愛心總數' },
+            { id: 'hp',     name: '堅韌肉盾', emoji: '❤️', desc: '最大生命值（含裝備加成）' },
+            { id: 'atk',    name: '破壞神',   emoji: '⚔️', desc: '攻擊力（含裝備加成）' },
+            { id: 'def',    name: '守護者',   emoji: '🛡️', desc: '防禦力（含裝備加成）' }
         ];
 
         let db = null;
@@ -124,12 +125,16 @@
             document.getElementById('tabs').innerHTML = CATS.map(c =>
                 `<button data-cat="${c.id}" class="cat-btn whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition ${category === c.id ? 'bg-yellow-500 text-slate-900 shadow-lg scale-105' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">${c.emoji} ${c.name}</button>`
             ).join('');
+            const cat = CATS.find(c => c.id === category);
+            document.getElementById('catDesc').textContent = cat ? cat.desc : "";
             document.querySelectorAll('.cat-btn').forEach(b => b.onclick = () => { category = b.dataset.cat; renderTabs(); renderList(); });
         };
 
         const renderList = () => {
             const sorted = [...users].sort((a, b) => (b[category] || 0) - (a[category] || 0)).slice(0, 10);
             const listEl = document.getElementById('list');
+            const cat = CATS.find(c => c.id === category);
+            document.getElementById('catDesc').textContent = cat ? cat.desc : "";
             document.getElementById('status').style.display = 'none';
             if (sorted.length === 0) {
                 listEl.innerHTML = `<div class="text-center text-slate-400 py-10">目前還沒有資料（新學期學生註冊後就會出現囉）</div>`;
