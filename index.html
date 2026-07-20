@@ -151,7 +151,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.6"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.7"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -1748,6 +1748,7 @@
 
                 try {
                     let useRevive = { attacker: false, defender: false };
+                    let battleRecord = null; // 戰報（transaction 成功後寫入 pk_history）
                     await runTransaction(db, async (t) => {
                         // 先確認這場 PK 還存在（防止連點/多裝置造成重複結算）
                         const pkDoc = await t.get(pkRef);
@@ -1851,10 +1852,32 @@
                             attackerLog = `慘烈... 你與 ${dData.nickname || "神秘人"} 都答錯。`;
                         }
 
+                        const winner = attackerCorrect && defenderCorrect ? "draw"
+                            : attackerCorrect && !defenderCorrect ? "attacker"
+                            : !attackerCorrect && defenderCorrect ? "defender" : "both_wrong";
+                        battleRecord = {
+                            attackerId: pkData.attackerId, attackerClass: attClass,
+                            attackerName: aData.name || "", attackerSeat: aData.seat || "",
+                            defenderId: user.id, defenderClass: classId,
+                            defenderName: dData.name || "", defenderSeat: dData.seat || "",
+                            chapter: (pkData.question && pkData.question.chapter) || "",
+                            question: (pkData.question && pkData.question.question) || "",
+                            attackerCorrect: !!attackerCorrect, defenderCorrect: !!defenderCorrect,
+                            winner,
+                            damage: winner === "attacker" ? dmgToDefender : winner === "defender" ? dmgToAttacker : winner === "both_wrong" ? 30 : 0,
+                            reviveUsed: useRevive.attacker || useRevive.defender,
+                            timestamp: Date.now()
+                        };
+
                         t.update(defenderRef, dUpd);
                         t.update(attackerRef, aUpd);
                         t.delete(pkRef);
                     });
+
+                    // 寫入 PK 戰報（非關鍵路徑，失敗不影響結算）
+                    if (battleRecord) {
+                        addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'pk_history'), battleRecord).catch(() => { });
+                    }
 
                     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'), {
                         targetId: pkData.attackerId,
@@ -2519,6 +2542,95 @@
         };
 
         // ============================================================
+        // PK 戰報（老師用，唯讀）
+        // ============================================================
+        const PKHistoryView = ({ db, classId }) => {
+            const [logs, setLogs] = useState(null); // null = 載入中
+            const [onlyMyClass, setOnlyMyClass] = useState(true);
+
+            useEffect(() => {
+                if (!db) return;
+                (async () => {
+                    try {
+                        const q = window.firebaseModules.query(
+                            window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'pk_history'),
+                            window.firebaseModules.orderBy('timestamp', 'desc'),
+                            window.firebaseModules.limit(100)
+                        );
+                        const snap = await window.firebaseModules.getDocs(q);
+                        setLogs(snap.docs.map(d => d.data()));
+                    } catch (e) { console.error(e); setLogs([]); }
+                })();
+            }, [db]);
+
+            const WINNER_LABEL = {
+                attacker: { text: "攻方勝", cls: "bg-red-100 text-red-700" },
+                defender: { text: "守方勝", cls: "bg-blue-100 text-blue-700" },
+                draw: { text: "平手", cls: "bg-emerald-100 text-emerald-700" },
+                both_wrong: { text: "兩敗俱傷", cls: "bg-slate-200 text-slate-600" }
+            };
+            const fmtTime = (ts) => {
+                const d = new Date(ts);
+                return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            };
+            const shown = !Array.isArray(logs) ? [] : (onlyMyClass ? logs.filter(l => l.attackerClass === classId || l.defenderClass === classId) : logs);
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                        <h3 className="font-bold text-slate-700"><i className="fas fa-khanda"></i> PK 戰報（最近 100 場）</h3>
+                        <div className="flex gap-2">
+                            <button onClick={() => setOnlyMyClass(true)} className={`px-4 py-1.5 rounded-full text-xs font-bold ${onlyMyClass ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>只看 {classId}班</button>
+                            <button onClick={() => setOnlyMyClass(false)} className={`px-4 py-1.5 rounded-full text-xs font-bold ${!onlyMyClass ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>全校</button>
+                        </div>
+                    </div>
+                    {logs === null && <div className="text-center py-10 text-slate-400"><i className="fas fa-circle-notch fa-spin text-3xl"></i></div>}
+                    {Array.isArray(logs) && shown.length === 0 && (
+                        <div className="text-center text-slate-400 py-10">還沒有 PK 紀錄（此功能上線後的新對戰才會記錄）</div>
+                    )}
+                    {Array.isArray(logs) && shown.length > 0 && (
+                        <div className="overflow-x-auto border rounded-lg bg-white shadow-inner">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 text-slate-500 sticky top-0">
+                                    <tr>
+                                        <th className="p-2 border-b whitespace-nowrap">時間</th>
+                                        <th className="p-2 border-b">攻方</th>
+                                        <th className="p-2 border-b">守方</th>
+                                        <th className="p-2 border-b w-16 text-center">攻/守</th>
+                                        <th className="p-2 border-b">題目</th>
+                                        <th className="p-2 border-b w-20 text-center">結果</th>
+                                        <th className="p-2 border-b w-14 text-center">傷害</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {shown.map((l, i) => {
+                                        const w = WINNER_LABEL[l.winner] || { text: l.winner, cls: "bg-slate-100 text-slate-500" };
+                                        return (
+                                            <tr key={i} className="hover:bg-blue-50">
+                                                <td className="p-2 text-slate-400 whitespace-nowrap">{fmtTime(l.timestamp)}</td>
+                                                <td className="p-2 font-bold text-slate-700 whitespace-nowrap">{l.attackerClass}班{l.attackerSeat}號 {l.attackerName}</td>
+                                                <td className="p-2 font-bold text-slate-700 whitespace-nowrap">{l.defenderClass}班{l.defenderSeat}號 {l.defenderName}</td>
+                                                <td className="p-2 text-center font-mono whitespace-nowrap">
+                                                    <span className={l.attackerCorrect ? "text-green-600" : "text-red-500"}>{l.attackerCorrect ? "✓" : "✗"}</span>
+                                                    /
+                                                    <span className={l.defenderCorrect ? "text-green-600" : "text-red-500"}>{l.defenderCorrect ? "✓" : "✗"}</span>
+                                                </td>
+                                                <td className="p-2 text-slate-500"><span className="text-blue-500 font-bold">{l.chapter}</span> {l.question}</td>
+                                                <td className="p-2 text-center"><span className={`px-2 py-0.5 rounded font-bold ${w.cls}`}>{w.text}</span></td>
+                                                <td className="p-2 text-center font-mono text-red-500">{l.damage > 0 ? `-${l.damage}` : "—"}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    <div className="text-xs text-slate-400 mt-2">戰報從功能上線起開始記錄；「傷害」為敗方被扣的 HP（平手不扣血、兩敗俱傷各扣 30）。</div>
+                </div>
+            );
+        };
+
+        // ============================================================
         // Teacher Dashboard
         // ============================================================
         const TeacherDashboard = ({ db, classId, onLogout }) => {
@@ -2752,6 +2864,12 @@
                         const t = d.data().targetId || "";
                         if (resetTargetClass === 'all' || t.startsWith(resetTargetClass + "-")) allRefs.push(d.ref);
                     });
+                    // 4. PK 戰報紀錄
+                    const pkhSnap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'public', 'data', 'pk_history'));
+                    pkhSnap.forEach(d => {
+                        const p = d.data();
+                        if (resetTargetClass === 'all' || p.attackerClass === resetTargetClass || p.defenderClass === resetTargetClass) allRefs.push(d.ref);
+                    });
                     // 分批刪除（Firestore 每批上限 500，取 400 保守值）
                     let deleted = 0;
                     for (let i = 0; i < allRefs.length; i += 400) {
@@ -2786,6 +2904,7 @@
                             {[
                                 { id: 'analysis', label: '答題分析', icon: 'fa-chart-pie' },
                                 { id: 'students', label: '學生管理', icon: 'fa-users' },
+                                { id: 'pk', label: 'PK 戰報', icon: 'fa-khanda' },
                                 { id: 'rank', label: '全校排行', icon: 'fa-trophy' },
                                 { id: 'questions', label: '題庫管理', icon: 'fa-book-open' },
                                 { id: 'reports', label: '學習報告', icon: 'fa-file-pdf' }
@@ -2830,6 +2949,7 @@
                                                 <th className="p-3 border-b text-right">金幣</th>
                                                 <th className="p-3 border-b text-center">屬性(含裝備)</th>
                                                 <th className="p-3 border-b text-center">答對率</th>
+                                                <th className="p-3 border-b text-center">PK 勝/負/平</th>
                                                 <th className="p-3 border-b text-center">操作</th>
                                             </tr>
                                         </thead>
@@ -2845,6 +2965,7 @@
                                                         <td className="p-3 text-right font-mono text-yellow-600 font-bold">{s.gold || 0}</td>
                                                         <td className="p-3 text-center font-mono text-xs">HP{eff.maxHp}/A{eff.atk}/D{eff.def}</td>
                                                         <td className="p-3 text-center font-mono text-xs">{acc !== null ? <span className={`px-2 py-1 rounded font-bold ${acc < 60 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{acc}% ({s.totalQuizQuestions})</span> : <span className="text-slate-300">-</span>}</td>
+                                                        <td className="p-3 text-center font-mono text-xs"><span className="text-green-600 font-bold">{s.pkWins || 0}</span>/<span className="text-red-500 font-bold">{s.pkLosses || 0}</span>/<span className="text-slate-500">{s.pkDraws || 0}</span></td>
                                                         <td className="p-3 flex justify-center gap-2">
                                                             <button onClick={() => setEditStudent(s)} className="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs font-bold hover:bg-slate-50">調整</button>
                                                             <button onClick={() => sendGold(s.id, s.name)} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-500 border border-yellow-500">發金幣</button>
@@ -2866,6 +2987,8 @@
                                     </div>
                                 </div>
                             )}
+
+                            {tab === 'pk' && <PKHistoryView db={db} classId={classId} />}
 
                             {tab === 'rank' && <LeaderboardView db={db} isTeacherMode={true} />}
 
