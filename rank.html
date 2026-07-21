@@ -29,7 +29,7 @@
     <div class="max-w-2xl mx-auto p-4">
         <div class="text-center mb-4">
             <h1 class="text-4xl font-black tracking-widest gold-text" style="font-family:Cinzel,serif">煉金學園</h1>
-            <div class="text-slate-400 text-sm tracking-[0.4em] mt-1">排行榜 LEADERBOARD <span class="text-slate-600 text-xs">v1.2</span></div>
+            <div class="text-slate-400 text-sm tracking-[0.4em] mt-1">排行榜 LEADERBOARD <span class="text-slate-600 text-xs">v1.3</span></div>
         </div>
 
         <div id="tabs" class="flex gap-2 overflow-x-auto pb-2 mb-2 justify-start md:justify-center"></div>
@@ -76,7 +76,7 @@
 
         const CATS = [
             { id: 'total',  name: '元素大師', emoji: '🏆', desc: '綜合總分：經驗值＋戰力（HP+ATK+DEF）＋愛心×10＋金幣×0.1' },
-            { id: 'progress', name: '進步之星', emoji: '📈', desc: '最近 20 題比更早的自己進步幾個百分點——只跟自己比！（約累積一週題量後上榜）' },
+            { id: 'progress', name: '進步之星', emoji: '📈', desc: '最近 6 題比更早的自己進步幾個百分點——只跟自己比！（答滿 9 題、約第 3 天起上榜）' },
             { id: 'xp',     name: '博學多聞', emoji: '📖', desc: '每日答題累積的經驗值（XP），答得越勤分數越高' },
             { id: 'gold',   name: '煉金大亨', emoji: '💰', desc: '目前持有的金幣數（花掉就不算囉）' },
             { id: 'hearts', name: '校園人氣', emoji: '💖', desc: '收到同學送的愛心總數' },
@@ -108,12 +108,12 @@
                     const u = d.data();
                     const eff = effStats(u);
                     const score = (u.xp || 0) + (eff.maxHp + eff.atk + eff.def) + ((u.hearts || 0) * 10) + Math.floor((u.gold || 0) * 0.1);
-                    // 進步分數：最近 20 題答對率 - 更早的答對率（兩邊都要 ≥9 題才計算）
-                    const recent = Array.isArray(u.recentResults) ? u.recentResults : [];
+                    // 進步分數：最近 6 題答對率 - 更早的答對率（最近滿 6 題、更早 ≥3 題即計算，約第 3 天上榜）
+                    const recent = (Array.isArray(u.recentResults) ? u.recentResults : []).slice(-6);
                     const recentC = recent.reduce((a, b) => a + (b ? 1 : 0), 0);
                     const earlierQ = (u.totalQuizQuestions || 0) - recent.length;
                     const earlierC = (u.totalQuizCorrect || 0) - recentC;
-                    const progress = (recent.length >= 9 && earlierQ >= 9 && earlierC >= 0)
+                    const progress = (recent.length >= 6 && earlierQ >= 3 && earlierC >= 0)
                         ? Math.round((recentC / recent.length - earlierC / earlierQ) * 100)
                         : null;
                     // 公開頁面只留暱稱，不帶真實姓名/座號

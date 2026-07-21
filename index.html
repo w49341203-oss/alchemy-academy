@@ -7,8 +7,8 @@
     <!-- PWA：可安裝成桌面/主畫面 App -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
-    <link rel="icon" type="image/png" href="images/icons/icon-192.png">
-    <link rel="apple-touch-icon" href="images/icons/apple-touch-icon-180.png">
+    <link rel="icon" type="image/png" href="images/icons/icon-192-v2.png">
+    <link rel="apple-touch-icon" href="images/icons/apple-touch-icon-180-v2.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="煉金學園">
@@ -152,6 +152,11 @@
         .option-btn:hover { border-color: #3b82f6; background: #eff6ff; transform: translateX(3px); }
         .option-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .option-btn .label { display:inline-block; width: 28px; height: 28px; line-height: 24px; text-align:center; border:2px solid #94a3b8; border-radius:50%; font-weight: 900; margin-right: 10px; color: #475569; }
+        /* 選中狀態（用複合選擇器確保蓋過基本樣式） */
+        .option-btn.selected { border-color: #2563eb; background: #dbeafe; transform: translateX(3px); box-shadow: 0 2px 8px rgba(37,99,235,0.25); }
+        .option-btn.selected .label { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .option-btn.selected-red { border-color: #dc2626; background: #fee2e2; transform: translateX(3px); box-shadow: 0 2px 8px rgba(220,38,38,0.25); }
+        .option-btn.selected-red .label { background: #dc2626; border-color: #dc2626; color: #fff; }
 
         .buff-chip { display:inline-flex; align-items:center; gap:4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
     </style>
@@ -163,7 +168,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.9"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v3.3"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -913,12 +918,12 @@
                             const u = d.data();
                             const eff = getEffectiveStats(u);
                             const score = (u.xp || 0) + (eff.maxHp + eff.atk + eff.def) + ((u.hearts || 0) * 10) + Math.floor((u.gold || 0) * 0.1);
-                            // 進步分數：最近 20 題答對率 - 更早的答對率（兩邊都要 ≥9 題才計算）
-                            const recent = Array.isArray(u.recentResults) ? u.recentResults : [];
+                            // 進步分數：最近 6 題答對率 - 更早的答對率（最近滿 6 題、更早 ≥3 題即計算，約第 3 天上榜）
+                            const recent = (Array.isArray(u.recentResults) ? u.recentResults : []).slice(-6);
                             const recentC = recent.reduce((a, b) => a + (b ? 1 : 0), 0);
                             const earlierQ = (u.totalQuizQuestions || 0) - recent.length;
                             const earlierC = (u.totalQuizCorrect || 0) - recentC;
-                            const progress = (recent.length >= 9 && earlierQ >= 9 && earlierC >= 0)
+                            const progress = (recent.length >= 6 && earlierQ >= 3 && earlierC >= 0)
                                 ? Math.round((recentC / recent.length - earlierC / earlierQ) * 100)
                                 : null;
                             all.push({ ...u, class: c, id: d.id, score, effAtk: eff.atk, effDef: eff.def, effMaxHp: eff.maxHp, progress });
@@ -953,7 +958,7 @@
 
             const cats = [
                 { id: 'total', name: '元素大師', icon: 'fa-trophy', color: 'text-yellow-500', desc: '綜合總分：經驗值＋戰力（HP+ATK+DEF）＋愛心×10＋金幣×0.1' },
-                { id: 'progress', name: '進步之星', icon: 'fa-arrow-trend-up', color: 'text-emerald-500', desc: '最近 20 題比更早的自己進步幾個百分點——只跟自己比！（約累積一週題量後上榜）' },
+                { id: 'progress', name: '進步之星', icon: 'fa-arrow-trend-up', color: 'text-emerald-500', desc: '最近 6 題比更早的自己進步幾個百分點——只跟自己比！（答滿 9 題、約第 3 天起上榜）' },
                 { id: 'xp', name: '博學多聞', icon: 'fa-book', color: 'text-blue-500', desc: '每日答題累積的經驗值（XP），答得越勤分數越高' },
                 { id: 'gold', name: '煉金大亨', icon: 'fa-coins', color: 'text-yellow-600', desc: '目前持有的金幣數（花掉就不算囉）' },
                 { id: 'hearts', name: '校園人氣', icon: 'fa-heart', color: 'text-pink-500', desc: '收到同學送的愛心總數' },
@@ -1633,11 +1638,11 @@
                     finalResults.forEach(r => recent.push(r.correct ? 1 : 0));
                     while (recent.length > 20) recent.shift();
 
-                    // ===== 煉金導師鼓勵：答對率 < 60% 且累積 ≥ 9 題的同學，每 3 天觸發一次 =====
+                    // ===== 煉金導師鼓勵：答對率 < 60% 且累積 ≥ 6 題的同學，每 3 天觸發一次 =====
                     const careerAccAfter = (prevC + correctCount) / (prevQ + finalResults.length);
                     const todayStr = formatDate(new Date());
                     let mentorTriggered = false;
-                    if (prevQ + finalResults.length >= 9 && careerAccAfter < 0.6) {
+                    if (prevQ + finalResults.length >= 6 && careerAccAfter < 0.6) {
                         const last = d.lastMentorDate ? new Date(d.lastMentorDate) : null;
                         const daysSince = last ? Math.floor((Date.now() - last.getTime()) / ONE_DAY_MS) : 999;
                         if (daysSince >= 3) mentorTriggered = true;
@@ -1757,7 +1762,7 @@
                                 <button
                                     key={L}
                                     onClick={() => setSelectedOption(L)}
-                                    className={`option-btn ${selectedOption === L ? 'border-blue-600 bg-blue-100' : ''}`}>
+                                    className={`option-btn ${selectedOption === L ? 'selected' : ''}`}>
                                     <span className="label">{L}</span>{q.options[L]}
                                 </button>
                             ))}
@@ -1814,7 +1819,7 @@
                         {question.imageUrl && <img src={question.imageUrl} className="max-w-full max-h-60 mx-auto rounded border" onError={(e) => e.target.style.display = 'none'} />}
                         <div>
                             {["A", "B", "C", "D"].map(L => question.options?.[L] && (
-                                <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'border-red-600 bg-red-100' : ''}`}>
+                                <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'selected-red' : ''}`}>
                                     <span className="label">{L}</span>{question.options[L]}
                                 </button>
                             ))}
@@ -2005,7 +2010,7 @@
                                 {pkData.question.imageUrl && <img src={pkData.question.imageUrl} className="max-w-full max-h-60 mx-auto rounded border" onError={(e) => e.target.style.display = 'none'} />}
                                 <div>
                                     {["A", "B", "C", "D"].map(L => pkData.question?.options?.[L] && (
-                                        <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'border-red-600 bg-red-100' : ''}`}>
+                                        <button key={L} onClick={() => setAnswer(L)} className={`option-btn ${answer === L ? 'selected-red' : ''}`}>
                                             <span className="label">{L}</span>{pkData.question.options[L]}
                                         </button>
                                     ))}
@@ -2262,6 +2267,30 @@
                     if (awarded) setMsg({ title: "🎁 新手禮", content: "歡迎來到煉金學園！新手禮 50 金幣入袋，去商店逛逛吧！" });
                 })();
             }, [currentUser.id, currentUser.welcomeGiftReceived]);
+
+            // 首次冒險邀請：從沒答過題的學生，登入後跳出鼓勵視窗（答過就不再出現）
+            const nudgedRef = useRef(false);
+            useEffect(() => {
+                if (!currentUser || !currentUser.id) return;
+                if ((currentUser.totalQuizQuestions || 0) > 0) return;
+                if (inMaintenance) return;
+                if (nudgedRef.current) return;
+                nudgedRef.current = true;
+                const timer = setTimeout(() => {
+                    // 若已有其他視窗（新手禮/每日獎勵）開著就先不打擾，下次登入再邀
+                    setMsg(m => m || {
+                        title: "🌟 第一次冒險邀請",
+                        content: (
+                            <div className="text-center space-y-3">
+                                <p className="font-bold text-lg">你還沒開始答題冒險！</p>
+                                <p className="text-sm text-slate-500">每天只要 3 題，<b>答錯也有金幣拿</b>，賺金幣買裝備變強，試試看吧！</p>
+                                <button onClick={() => { setMsg(null); setQuizModal(true); }} className="bg-yellow-500 text-slate-900 px-6 py-3 rounded-lg font-black shadow hover:bg-yellow-400 text-lg">⚔️ 立刻挑戰 3 題</button>
+                            </div>
+                        )
+                    });
+                }, 2000);
+                return () => clearTimeout(timer);
+            }, [currentUser.id, currentUser.totalQuizQuestions]);
 
             const drawDailyFortune = () => {
                 const fortunes = [
@@ -2892,6 +2921,34 @@
                 } catch (e) { setDownloading(false); alert(e.message); }
             };
 
+            // 一次性：從 quiz_history 回填全校的 recentResults（進步之星排行榜用）
+            const backfillProgress = async () => {
+                if (!confirm("要從過去的答題紀錄回填「進步之星」資料嗎？\n（全校一次性作業，約需 1~2 分鐘，期間請勿關閉視窗）")) return;
+                setMsg("回填中，請勿關閉視窗...");
+                try {
+                    const fm = window.firebaseModules;
+                    let done = 0, updated = 0;
+                    for (const c of CLASSES) {
+                        const snap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'classes', c, 'users'));
+                        for (const d of snap.docs) {
+                            done++;
+                            const histQ = fm.query(
+                                fm.collection(db, 'artifacts', APP_ID, 'classes', c, 'users', d.id, 'quiz_history'),
+                                fm.orderBy('timestamp', 'desc'),
+                                fm.limit(20)
+                            );
+                            const hist = await fm.getDocs(histQ);
+                            if (hist.empty) continue;
+                            const recent = hist.docs.map(h => h.data().isCorrect ? 1 : 0).reverse();
+                            await fm.updateDoc(d.ref, { recentResults: recent });
+                            updated++;
+                            if (done % 10 === 0) setMsg(`回填中... 已處理 ${done} 位`);
+                        }
+                    }
+                    setMsg(`回填完成：共更新 ${updated} 位學生的進步之星資料`);
+                } catch (e) { setMsg("回填失敗：" + (e.message || e)); }
+            };
+
             const resetStudentPassword = async (student) => {
                 if (!confirm(`確定要將 ${student.name} 的密碼重設為 "1234"？`)) return;
                 await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', student.id), { password: "1234" });
@@ -3084,10 +3141,13 @@
 
                             {tab === 'students' && (
                                 <div>
-                                    <div className="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200 flex items-center gap-3">
+                                    <div className="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200 flex items-center gap-3 flex-wrap">
                                         <div className="bg-yellow-100 p-2 rounded-full text-yellow-600"><i className="fas fa-coins"></i></div>
                                         <label className="font-bold text-sm text-yellow-800">快速發金幣面額：</label>
                                         <input type="number" value={goldAmount} onChange={e => setGoldAmount(e.target.value)} className="border p-2 w-24 rounded font-bold text-right" />
+                                        <button onClick={backfillProgress} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-emerald-700" title="從過去的答題紀錄回填進步之星排行榜資料（一次性）">
+                                            <i className="fas fa-arrow-trend-up"></i> 回填進步之星資料
+                                        </button>
                                     </div>
                                     {(() => {
                                         // 缺號提示：列出 1~最大已註冊座號之間還沒註冊的座號
