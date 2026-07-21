@@ -168,7 +168,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v3.3"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v3.4"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -226,7 +226,8 @@
             heartsSentToday: {},
             chapterStats: {},
             guildId: null,
-            usedRevives: 0
+            usedRevives: 0,
+            loginDays: 1
         };
 
         const CHAPTER_NAMES = {
@@ -349,6 +350,14 @@
         const formatDate = (date) => {
             const d = new Date(date);
             return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        };
+        // 最後上線的相對時間（以「日曆天」計算：昨天 23:59 上線 = 昨天）
+        const lastSeenInfo = (ts) => {
+            if (!ts) return { text: "—", days: null };
+            const a = new Date(); a.setHours(0, 0, 0, 0);
+            const b = new Date(ts); b.setHours(0, 0, 0, 0);
+            const days = Math.round((a.getTime() - b.getTime()) / ONE_DAY_MS);
+            return { text: days <= 0 ? "今天" : days === 1 ? "昨天" : `${days} 天前`, days };
         };
 
         // 月份 → 章節對應
@@ -2233,6 +2242,7 @@
                                     dailyPkDefenses: 0,
                                     extraQuizUsed: false,
                                     heartsSentToday: {},
+                                    loginDays: (d.loginDays || 0) + 1,
                                     buffs: cleanExpiredBuffs(d.buffs)
                                 });
                                 awarded = true;
@@ -2267,6 +2277,15 @@
                     if (awarded) setMsg({ title: "🎁 新手禮", content: "歡迎來到煉金學園！新手禮 50 金幣入袋，去商店逛逛吧！" });
                 })();
             }, [currentUser.id, currentUser.welcomeGiftReceived]);
+
+            // 記錄最後上線時間（每次打開 App 寫一次，供老師端「使用概況」判讀）
+            useEffect(() => {
+                if (!db || !user.id) return;
+                window.firebaseModules.updateDoc(
+                    window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id),
+                    { lastSeenAt: Date.now() }
+                ).catch(() => { });
+            }, [db, user.id]);
 
             // 首次冒險邀請：從沒答過題的學生，登入後跳出鼓勵視窗（答過就不再出現）
             const nudgedRef = useRef(false);
@@ -2628,8 +2647,49 @@
                 });
             });
 
+            // 使用概況統計
+            const usage = useMemo(() => {
+                const today = [], stale3 = [], noRecord = [], neverAnswered = [];
+                students.forEach(s => {
+                    const info = lastSeenInfo(s.lastSeenAt);
+                    if (info.days === null) noRecord.push(s);
+                    else if (info.days <= 0) today.push(s);
+                    else if (info.days >= 3) stale3.push(s);
+                    if ((s.totalQuizQuestions || 0) === 0) neverAnswered.push(s);
+                });
+                const bySeat = (a, b) => parseInt(a.seat) - parseInt(b.seat);
+                return { today, stale3: stale3.sort(bySeat), noRecord: noRecord.sort(bySeat), neverAnswered: neverAnswered.sort(bySeat) };
+            }, [students]);
+
             return (
                 <div className="space-y-6">
+                    <div className="bg-white border rounded-xl p-4 shadow-sm">
+                        <h4 className="font-bold text-slate-700 mb-3"><i className="fas fa-signal text-blue-500"></i> 使用概況</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                                <div className="text-xs text-blue-500 font-bold mb-1">今日上線</div>
+                                <div className="text-3xl font-black text-blue-700">{usage.today.length}<span className="text-base text-blue-400">/{students.length} 人</span></div>
+                            </div>
+                            <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+                                <div className="text-xs text-red-500 font-bold mb-1">⚠️ 3 天以上未上線（{usage.stale3.length} 人）</div>
+                                <div className="text-slate-700 leading-relaxed">
+                                    {usage.stale3.length === 0 ? <span className="text-slate-400">沒有人掉隊 🎉</span>
+                                        : usage.stale3.map(s => <span key={s.id} className="inline-block bg-white border border-red-200 rounded px-1.5 py-0.5 mr-1 mb-1 text-xs font-bold">{s.seat}號 {s.name}</span>)}
+                                </div>
+                            </div>
+                            <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
+                                <div className="text-xs text-orange-500 font-bold mb-1">從未答過題（{usage.neverAnswered.length} 人）</div>
+                                <div className="text-slate-700 leading-relaxed">
+                                    {usage.neverAnswered.length === 0 ? <span className="text-slate-400">全班都開張了 🎉</span>
+                                        : usage.neverAnswered.map(s => <span key={s.id} className="inline-block bg-white border border-orange-200 rounded px-1.5 py-0.5 mr-1 mb-1 text-xs font-bold">{s.seat}號 {s.name}</span>)}
+                                </div>
+                            </div>
+                        </div>
+                        {usage.noRecord.length > 0 && (
+                            <div className="text-xs text-slate-400 mt-2">無上線紀錄（可能還沒用過新版）：{usage.noRecord.map(s => `${s.seat}號`).join("、")}</div>
+                        )}
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
                             <h4 className="text-blue-100 font-bold mb-2 text-xs">班級平均答對率</h4>
@@ -3174,6 +3234,7 @@
                                                 <th className="p-3 border-b text-center">屬性(含裝備)</th>
                                                 <th className="p-3 border-b text-center">答對率</th>
                                                 <th className="p-3 border-b text-center">PK 勝/負/平</th>
+                                                <th className="p-3 border-b text-center">最後上線</th>
                                                 <th className="p-3 border-b text-center">操作</th>
                                             </tr>
                                         </thead>
@@ -3190,6 +3251,18 @@
                                                         <td className="p-3 text-center font-mono text-xs">HP{eff.maxHp}/A{eff.atk}/D{eff.def}</td>
                                                         <td className="p-3 text-center font-mono text-xs">{acc !== null ? <span className={`px-2 py-1 rounded font-bold ${acc < 60 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{acc}% ({s.totalQuizQuestions})</span> : <span className="text-slate-300">-</span>}</td>
                                                         <td className="p-3 text-center font-mono text-xs"><span className="text-green-600 font-bold">{s.pkWins || 0}</span>/<span className="text-red-500 font-bold">{s.pkLosses || 0}</span>/<span className="text-slate-500">{s.pkDraws || 0}</span></td>
+                                                        <td className="p-3 text-center text-xs">
+                                                            {(() => {
+                                                                const info = lastSeenInfo(s.lastSeenAt);
+                                                                const cls = info.days === null ? "text-slate-300" : info.days >= 3 ? "bg-red-100 text-red-600 font-bold" : "text-slate-600";
+                                                                return (
+                                                                    <div>
+                                                                        <span className={`px-2 py-1 rounded ${cls}`}>{info.text}</span>
+                                                                        {(s.loginDays || 0) > 0 && <div className="text-slate-400 mt-1">共 {s.loginDays} 天</div>}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </td>
                                                         <td className="p-3 flex justify-center gap-2">
                                                             <button onClick={() => setEditStudent(s)} className="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs font-bold hover:bg-slate-50">調整</button>
                                                             <button onClick={() => sendGold(s.id, s.name)} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-500 border border-yellow-500">發金幣</button>
