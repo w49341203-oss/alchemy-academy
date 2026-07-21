@@ -3,5 +3,7 @@
 /*
 !/index.html
 !/rank.html
+!/manifest.json
+!/sw.js
 !/images
 !/.gitignore

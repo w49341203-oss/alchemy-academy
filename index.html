@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>煉金學園：元素之戰</title>
+    <!-- PWA：可安裝成桌面/主畫面 App -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="icon" type="image/png" href="images/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="images/icons/apple-touch-icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="煉金學園">
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -32,6 +40,10 @@
     <div id="error-log"></div>
 
     <script>
+        // PWA：註冊 service worker（只在 https 環境；本機 file:// 測試時自動略過）
+        if ('serviceWorker' in navigator && location.protocol === 'https:') {
+            navigator.serviceWorker.register('sw.js').catch(function () { });
+        }
         window.onerror = function (msg, src, line) {
             const el = document.getElementById('error-log');
             if (!el) return;
@@ -151,7 +163,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.7"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.8"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
