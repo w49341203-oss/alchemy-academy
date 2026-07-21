@@ -163,7 +163,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v2.8"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v2.9"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -310,6 +310,29 @@
             iron_wall:     "🧱 銅牆鐵壁",
             pk_shield:     "🔰 PK 護盾"
         };
+
+        // 答錯安慰文案（答對 0~1 題時隨機顯示一句）
+        const COMFORT_LINES = [
+            "差一點點就對了，明天再戰！",
+            "答錯的題目才是進步的起點 💪",
+            "沒關係，煉金術士都是從失敗中煉出黃金的！",
+            "這幾題偏難，錯了很正常，多看一眼正解印象會更深！",
+            "每一題都在默默幫你變強，累積中！"
+        ];
+        // 煉金導師的鼓勵（答對率偏低的同學每 3 天觸發一次）
+        const MENTOR_LINES = [
+            "🧙 煉金導師：我看到你每天都有來練功，這份堅持比分數更珍貴！",
+            "🧙 煉金導師：進步不是一天發生的，你已經在路上了。",
+            "🧙 煉金導師：答錯沒關係，記得看正解，下次就是你的了！",
+            "🧙 煉金導師：別跟別人比，跟昨天的自己比就好。",
+            "🧙 煉金導師：你的努力值爆表！答對率一定會慢慢跟上的。"
+        ];
+        // 老師手動送鼓勵的預設句（可自行修改再送出）
+        const TEACHER_ENCOURAGE_PRESETS = [
+            "老師有看到你的努力，繼續加油！",
+            "最近有進步喔，老師以你為榮！",
+            "遇到不會的題目，歡迎隨時來問老師！"
+        ];
 
         // ============================================================
         // Utility
@@ -890,7 +913,15 @@
                             const u = d.data();
                             const eff = getEffectiveStats(u);
                             const score = (u.xp || 0) + (eff.maxHp + eff.atk + eff.def) + ((u.hearts || 0) * 10) + Math.floor((u.gold || 0) * 0.1);
-                            all.push({ ...u, class: c, id: d.id, score, effAtk: eff.atk, effDef: eff.def, effMaxHp: eff.maxHp });
+                            // 進步分數：最近 20 題答對率 - 更早的答對率（兩邊都要 ≥9 題才計算）
+                            const recent = Array.isArray(u.recentResults) ? u.recentResults : [];
+                            const recentC = recent.reduce((a, b) => a + (b ? 1 : 0), 0);
+                            const earlierQ = (u.totalQuizQuestions || 0) - recent.length;
+                            const earlierC = (u.totalQuizCorrect || 0) - recentC;
+                            const progress = (recent.length >= 9 && earlierQ >= 9 && earlierC >= 0)
+                                ? Math.round((recentC / recent.length - earlierC / earlierQ) * 100)
+                                : null;
+                            all.push({ ...u, class: c, id: d.id, score, effAtk: eff.atk, effDef: eff.def, effMaxHp: eff.maxHp, progress });
                         });
                     }
                     setUsers(all);
@@ -908,6 +939,10 @@
                     case 'hp':      sorted.sort((a, b) => b.effMaxHp - a.effMaxHp); break;
                     case 'atk':     sorted.sort((a, b) => b.effAtk - a.effAtk); break;
                     case 'def':     sorted.sort((a, b) => b.effDef - a.effDef); break;
+                    case 'progress':
+                        sorted = sorted.filter(u => u.progress !== null && u.progress !== undefined);
+                        sorted.sort((a, b) => b.progress - a.progress);
+                        break;
                 }
                 return sorted;
             };
@@ -918,6 +953,7 @@
 
             const cats = [
                 { id: 'total', name: '元素大師', icon: 'fa-trophy', color: 'text-yellow-500', desc: '綜合總分：經驗值＋戰力（HP+ATK+DEF）＋愛心×10＋金幣×0.1' },
+                { id: 'progress', name: '進步之星', icon: 'fa-arrow-trend-up', color: 'text-emerald-500', desc: '最近 20 題比更早的自己進步幾個百分點——只跟自己比！（約累積一週題量後上榜）' },
                 { id: 'xp', name: '博學多聞', icon: 'fa-book', color: 'text-blue-500', desc: '每日答題累積的經驗值（XP），答得越勤分數越高' },
                 { id: 'gold', name: '煉金大亨', icon: 'fa-coins', color: 'text-yellow-600', desc: '目前持有的金幣數（花掉就不算囉）' },
                 { id: 'hearts', name: '校園人氣', icon: 'fa-heart', color: 'text-pink-500', desc: '收到同學送的愛心總數' },
@@ -929,6 +965,7 @@
             const getDisplayValue = (u) => {
                 switch (category) {
                     case 'total': return Math.floor(u.score);
+                    case 'progress': return (u.progress > 0 ? "+" : "") + u.progress + "%";
                     case 'xp': return u.xp || 0;
                     case 'gold': return u.gold || 0;
                     case 'hearts': return u.hearts || 0;
@@ -1494,6 +1531,7 @@
             const [finished, setFinished] = useState(false);
             const [errorMsg, setErrorMsg] = useState(null);
             const [selectedOption, setSelectedOption] = useState(null);
+            const [bonusInfo, setBonusInfo] = useState(null); // 結算加碼資訊（進步/安慰/導師鼓勵）
             const submittingRef = useRef(false); // 防連點：避免同一題送出兩次
 
             useEffect(() => {
@@ -1564,6 +1602,8 @@
                         }
                     }
                 });
+                const wrongCount = finalResults.length - correctCount;
+                const comfortGold = wrongCount * 2; // 努力獎勵：答錯每題也給 2 金
 
                 let xpGain = 30;
                 if (hasActiveBuff(user, "wisdom_aura")) xpGain = Math.floor(xpGain * 1.5);
@@ -1572,9 +1612,38 @@
                 const { doc, runTransaction } = window.firebaseModules;
                 const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
 
+                let bonus = { perfect: false, progress: false, progressBonus: 0, comfortGold, comfortLine: null, mentorLine: null };
                 await runTransaction(db, async (t) => {
                     const uDoc = await t.get(userRef);
                     const d = uDoc.data();
+
+                    // ===== 進步之星：這次答對率贏過自己的生涯平均（升級石常勝軍因已 100% 不會重複領）=====
+                    const prevQ = d.totalQuizQuestions || 0;
+                    const prevC = d.totalQuizCorrect || 0;
+                    const sessionAcc = correctCount / finalResults.length;
+                    const isPerfect = correctCount === finalResults.length;
+                    const isProgress = prevQ >= 3 && sessionAcc > (prevC / prevQ);
+                    const progressBonus = isProgress ? 15 : 0;
+                    bonus.perfect = isPerfect;
+                    bonus.progress = isProgress;
+                    bonus.progressBonus = progressBonus;
+
+                    // ===== 最近 20 題滾動紀錄（進步之星排行榜用）=====
+                    const recent = Array.isArray(d.recentResults) ? [...d.recentResults] : [];
+                    finalResults.forEach(r => recent.push(r.correct ? 1 : 0));
+                    while (recent.length > 20) recent.shift();
+
+                    // ===== 煉金導師鼓勵：答對率 < 60% 且累積 ≥ 9 題的同學，每 3 天觸發一次 =====
+                    const careerAccAfter = (prevC + correctCount) / (prevQ + finalResults.length);
+                    const todayStr = formatDate(new Date());
+                    let mentorTriggered = false;
+                    if (prevQ + finalResults.length >= 9 && careerAccAfter < 0.6) {
+                        const last = d.lastMentorDate ? new Date(d.lastMentorDate) : null;
+                        const daysSince = last ? Math.floor((Date.now() - last.getTime()) / ONE_DAY_MS) : 999;
+                        if (daysSince >= 3) mentorTriggered = true;
+                    }
+                    bonus.mentorLine = mentorTriggered ? MENTOR_LINES[Math.floor(Math.random() * MENTOR_LINES.length)] : null;
+                    bonus.comfortLine = correctCount <= 1 ? COMFORT_LINES[Math.floor(Math.random() * COMFORT_LINES.length)] : null;
 
                     const newBaseMaxHp = (d.baseMaxHp ?? d.maxHp ?? 100) + totalHp;
                     const newBaseAtk = (d.baseAtk ?? d.atk ?? 10) + totalAtk;
@@ -1593,9 +1662,12 @@
                     const newXp = (d.xp || 0) + xpGain;
                     const newLvl = getLevelInfo(newXp);
                     const lvlChanged = newLvl.name !== getLevelInfo(d.xp || 0).name;
+                    const goldDelta = totalGold + comfortGold + bonus.progressBonus;
                     let upd = {
-                        gold: (d.gold || 0) + totalGold,
-                        totalGoldEarned: (d.totalGoldEarned || 0) + totalGold,
+                        gold: (d.gold || 0) + goldDelta,
+                        totalGoldEarned: (d.totalGoldEarned || 0) + goldDelta,
+                        recentResults: recent,
+                        ...(bonus.mentorLine ? { lastMentorDate: todayStr } : {}),
                         baseMaxHp: newBaseMaxHp,
                         baseAtk: newBaseAtk,
                         baseDef: newBaseDef,
@@ -1615,6 +1687,7 @@
                     }
                     t.update(userRef, upd);
                 });
+                setBonusInfo({ ...bonus });
                 onComplete && onComplete();
             };
 
@@ -1634,6 +1707,21 @@
                     <Modal title="答題完成！" onClose={onClose}>
                         <div className="text-center">
                             <h3 className="text-2xl font-bold mb-4 text-blue-600">答對 {results.filter(r => r.correct).length} / {results.length} 題</h3>
+                            {bonusInfo && bonusInfo.perfect && (
+                                <div className="bg-yellow-100 border-2 border-yellow-300 text-yellow-800 rounded-lg p-3 mb-3 font-bold animate-bounce-short">🌟 完美表現！全部答對，太神啦！</div>
+                            )}
+                            {bonusInfo && !bonusInfo.perfect && bonusInfo.progress && (
+                                <div className="bg-emerald-100 border-2 border-emerald-300 text-emerald-800 rounded-lg p-3 mb-3 font-bold animate-bounce-short">📈 進步之星！這次表現贏過了過去的自己，額外 +{bonusInfo.progressBonus} 金幣！</div>
+                            )}
+                            {bonusInfo && bonusInfo.comfortLine && (
+                                <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-3 mb-3 text-sm font-bold">{bonusInfo.comfortLine}</div>
+                            )}
+                            {bonusInfo && bonusInfo.comfortGold > 0 && (
+                                <div className="text-xs text-slate-500 mb-3">努力獎勵：答錯的題目每題也有 +2 金幣（共 +{bonusInfo.comfortGold}）</div>
+                            )}
+                            {bonusInfo && bonusInfo.mentorLine && (
+                                <div className="bg-purple-50 border border-purple-200 text-purple-700 rounded-lg p-3 mb-3 text-sm font-bold text-left">{bonusInfo.mentorLine}</div>
+                            )}
                             <div className="bg-yellow-50 p-4 rounded mb-4 text-left">
                                 <ul className="text-sm text-gray-600 space-y-1">
                                     {results.map((r, i) => (
@@ -2298,10 +2386,13 @@
                     {pkModal && <PKDefenderModal user={currentUser} pkData={pkModal} db={db} classId={classId} onComplete={() => setPkModal(null)} />}
 
                     {pkNotification && (
-                        <Modal title="⚔️ PK 戰報" onClose={acknowledgeNotification}>
+                        <Modal title={pkNotification.type === 'encourage_teacher' ? "💌 老師的鼓勵" : "⚔️ PK 戰報"} onClose={acknowledgeNotification}>
                             <div className="text-center space-y-4">
                                 <p className="text-lg font-bold">{pkNotification.message}</p>
-                                <button onClick={acknowledgeNotification} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">我知道了</button>
+                                {pkNotification.type === 'encourage_teacher' && (pkNotification.gold || 0) > 0 && (
+                                    <div className="text-yellow-600 font-bold bg-yellow-50 inline-block px-3 py-1 rounded border border-yellow-200"><i className="fas fa-coins"></i> 附贈 {pkNotification.gold} 金幣（已入帳）</div>
+                                )}
+                                <button onClick={acknowledgeNotification} className="bg-blue-600 text-white px-6 py-2 rounded font-bold">{pkNotification.type === 'encourage_teacher' ? "謝謝老師！" : "我知道了"}</button>
                             </div>
                         </Modal>
                     )}
@@ -2352,6 +2443,66 @@
                         </div>
                         <div><label className="text-xs font-bold text-slate-500">金幣 (Gold)</label><input type="number" value={stats.gold} onChange={e => setStats({ ...stats, gold: parseInt(e.target.value) || 0 })} className="border p-2 w-full rounded" /></div>
                         <button onClick={() => onSave(stats)} className="w-full bg-blue-600 text-white py-3 mt-4 rounded-lg font-bold shadow hover:bg-blue-700">儲存變更</button>
+                    </div>
+                </Modal>
+            );
+        };
+
+        // 老師手動送鼓勵（附贈金幣立即入帳，訊息在學生下次登入時跳出）
+        const EncourageModal = ({ student, db, classId, onClose, setMsg }) => {
+            const [message, setMessage] = useState(TEACHER_ENCOURAGE_PRESETS[0]);
+            const [gold, setGold] = useState(10);
+            const [sending, setSending] = useState(false);
+
+            const send = async () => {
+                if (!message.trim()) return;
+                setSending(true);
+                try {
+                    const fm = window.firebaseModules;
+                    const goldAmt = Math.max(0, parseInt(gold) || 0);
+                    if (goldAmt > 0) {
+                        await fm.updateDoc(fm.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', student.id), {
+                            gold: fm.increment(goldAmt),
+                            totalGoldEarned: fm.increment(goldAmt)
+                        });
+                    }
+                    await fm.addDoc(fm.collection(db, 'artifacts', APP_ID, 'public', 'data', 'notifications'), {
+                        targetId: student.id,
+                        type: 'encourage_teacher',
+                        message: message.trim(),
+                        gold: goldAmt,
+                        timestamp: Date.now()
+                    });
+                    setMsg(`已送出鼓勵給 ${student.name}${goldAmt > 0 ? `（附 ${goldAmt} 金幣）` : ""}，學生下次登入會看到`);
+                    onClose();
+                } catch (e) {
+                    setMsg("送出失敗：" + (e.message || e));
+                    setSending(false);
+                }
+            };
+
+            return (
+                <Modal title={`💌 送鼓勵給 ${student.name}`} onClose={onClose}>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2">快速選擇（點了還可以修改）</label>
+                            <div className="flex flex-col gap-2">
+                                {TEACHER_ENCOURAGE_PRESETS.map((p, i) => (
+                                    <button key={i} onClick={() => setMessage(p)} className={`text-left text-sm p-2 rounded border ${message === p ? 'border-pink-400 bg-pink-50' : 'border-slate-200 hover:bg-slate-50'}`}>{p}</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">鼓勵的話</label>
+                            <textarea value={message} onChange={e => setMessage(e.target.value)} className="w-full h-20 border rounded p-2 text-sm resize-none" placeholder="輸入想對這位學生說的話..."></textarea>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">附贈金幣（0 = 只送訊息）</label>
+                            <input type="number" min="0" value={gold} onChange={e => setGold(e.target.value)} className="w-full border rounded p-2 font-bold" />
+                        </div>
+                        <button disabled={sending || !message.trim()} onClick={send} className="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 disabled:opacity-50">
+                            {sending ? "送出中..." : "送出鼓勵"}
+                        </button>
                     </div>
                 </Modal>
             );
@@ -2653,6 +2804,7 @@
             const [msg, setMsg] = useState(null);
             const [editStudent, setEditStudent] = useState(null);
             const [historyStudent, setHistoryStudent] = useState(null);
+            const [encourageStudent, setEncourageStudent] = useState(null);
             const [goldAmount, setGoldAmount] = useState(100);
             const [resetTargetClass, setResetTargetClass] = useState("all");
             const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -2982,6 +3134,7 @@
                                                             <button onClick={() => setEditStudent(s)} className="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-xs font-bold hover:bg-slate-50">調整</button>
                                                             <button onClick={() => sendGold(s.id, s.name)} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-500 border border-yellow-500">發金幣</button>
                                                             <button onClick={() => setHistoryStudent(s)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold hover:bg-blue-200"><i className="fas fa-history"></i> 紀錄</button>
+                                                            <button onClick={() => setEncourageStudent(s)} className="bg-pink-100 text-pink-700 px-3 py-1 rounded text-xs font-bold hover:bg-pink-200"><i className="fas fa-envelope-heart"></i> 送鼓勵</button>
                                                             <button onClick={() => resetStudentPassword(s)} className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-xs font-bold hover:bg-purple-200"><i className="fas fa-key"></i> 重設密碼</button>
                                                         </td>
                                                     </tr>
@@ -3115,6 +3268,7 @@
                     {msg && <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl font-bold flex items-center gap-2"><i className="fas fa-info-circle"></i> {msg}<button onClick={() => setMsg(null)} className="ml-2 text-white/70 hover:text-white">×</button></div>}
                     {editStudent && <EditStatsModal student={editStudent} onClose={() => setEditStudent(null)} onSave={handleSaveStats} />}
                     {historyStudent && <QuizHistoryModal student={historyStudent} db={db} classId={classId} onClose={() => setHistoryStudent(null)} />}
+                    {encourageStudent && <EncourageModal student={encourageStudent} db={db} classId={classId} onClose={() => setEncourageStudent(null)} setMsg={setMsg} />}
 
                     {showResetConfirm && (
                         <Modal title="⚠️ 危險操作：重置資料" onClose={() => setShowResetConfirm(false)}>
