@@ -159,6 +159,44 @@
         .option-btn.selected-red .label { background: #dc2626; border-color: #dc2626; color: #fff; }
 
         .buff-chip { display:inline-flex; align-items:center; gap:4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+
+        /* ===== 頭像稀有度特效（T2 微光 / T3 脈動 / T4 旋轉光環 / T5 神話全特效）===== */
+        .av-fx { position: relative; display: inline-block; line-height: 0; }
+        .av-fx > img { position: relative; z-index: 1; display: block; border-radius: 50%; }
+        .av-fx::before, .av-fx::after { content: ""; position: absolute; border-radius: 50%; z-index: 0; pointer-events: none; }
+        /* T2 稀有：柔和微光 */
+        .av-t2 > img { box-shadow: 0 0 10px 2px rgba(56, 189, 248, 0.6); }
+        /* T3 史詩：脈動光暈 */
+        .av-t3 > img { animation: avPulse 2.2s ease-in-out infinite; }
+        @keyframes avPulse {
+            0%, 100% { box-shadow: 0 0 8px 2px rgba(168, 85, 247, 0.45); }
+            50%      { box-shadow: 0 0 20px 6px rgba(168, 85, 247, 0.9); }
+        }
+        /* T4 傳說：旋轉光環 + 光暈 */
+        .av-t4::before {
+            inset: -6%; background: conic-gradient(from 0deg, #f59e0b, #f43f5e, #8b5cf6, #22d3ee, #f59e0b);
+            animation: avSpin 3s linear infinite; filter: blur(1px);
+        }
+        .av-t4 > img { box-shadow: 0 0 14px 3px rgba(244, 63, 94, 0.5); }
+        /* T5 神話：雙向旋轉光環 + 強脈動 */
+        .av-t5::before {
+            inset: -8%; background: conic-gradient(from 0deg, #fde047, #f59e0b, #fff7cc, #f59e0b, #fde047);
+            animation: avSpin 2.4s linear infinite;
+        }
+        .av-t5::after {
+            inset: -13%; background: conic-gradient(from 180deg, transparent, rgba(253,224,71,.85), transparent, rgba(255,255,255,.8), transparent);
+            animation: avSpinBack 4s linear infinite; filter: blur(2px);
+        }
+        .av-t5 > img { animation: avPulseGold 2s ease-in-out infinite; }
+        @keyframes avPulseGold {
+            0%, 100% { box-shadow: 0 0 12px 3px rgba(253, 224, 71, 0.6); }
+            50%      { box-shadow: 0 0 26px 8px rgba(253, 224, 71, 1); }
+        }
+        @keyframes avSpin { to { transform: rotate(360deg); } }
+        @keyframes avSpinBack { to { transform: rotate(-360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            .av-t3 > img, .av-t4::before, .av-t5::before, .av-t5::after, .av-t5 > img { animation: none; }
+        }
     </style>
 
     <script type="text/babel" data-presets="react-classic">
@@ -168,7 +206,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v3.6"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v3.7"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -227,7 +265,8 @@
             chapterStats: {},
             guildId: null,
             usedRevives: 0,
-            loginDays: 1
+            loginDays: 1,
+            ownedAvatars: []
         };
 
         const CHAPTER_NAMES = {
@@ -303,6 +342,7 @@
             "heart-of-element":{ id:"heart-of-element",name:"元素之心",      type:"upgradeStone", tier:5, emoji:"💗", cost:25000, effects:{atk:50, def:50, hp:100}, globalLimit:8, desc:"ATK +50、DEF +50、maxHP +100。全校年度限量 8 顆。" }
         };
         const SHOP_TABS = [
+            { id: "avatar",       label: "頭像",   emoji: "🖼️" },
             { id: "weapon",       label: "武器",   emoji: "⚔️" },
             { id: "armor",        label: "防具",   emoji: "🛡" },
             { id: "accessory",    label: "飾品",   emoji: "💍" },
@@ -315,6 +355,86 @@
             war_god_rage:  "💢 戰神之怒",
             iron_wall:     "🧱 銅牆鐵壁",
             pk_shield:     "🔰 PK 護盾"
+        };
+
+        // ============================================================
+        // 頭像商店（圖片放在 images/avatars/，執行期零 API 費用）
+        // tier：2 稀有 / 3 史詩 / 4 傳說 / 5 神話（對應 CSS 特效 av-t2~av-t5）
+        // week：null = 常駐隨時可買；數字 = 該週限定（見 AVATAR_EVENTS）
+        // ============================================================
+        const AVATAR_TIER_COST = { 2: 100, 3: 250, 4: 500, 5: 1000 };
+        const AVATAR_TIER_LABEL = { 2: "稀有", 3: "史詩", 4: "傳說", 5: "神話" };
+        const AV = (id, name, tier, group, week) => ({
+            id, name, tier, group, week,
+            src: `images/avatars/${id}.png`,
+            cost: AVATAR_TIER_COST[tier]
+        });
+        const AVATAR_ITEMS = {
+            // ===== A. 動漫美型（多為每週限定）=====
+            "av_anime_festival_boy":   AV("av_anime_festival_boy",   "祭典少年", 2, "anime", 1),
+            "av_anime_festival_girl":  AV("av_anime_festival_girl",  "祭典少女", 3, "anime", 1),
+            "av_anime_ocean_knight":   AV("av_anime_ocean_knight",   "深海騎士", 3, "anime", 2),
+            "av_anime_ocean_princess": AV("av_anime_ocean_princess", "碧海公主", 3, "anime", 2),
+            "av_anime_star_mage":      AV("av_anime_star_mage",      "星辰法師", 3, "anime", 3),
+            "av_anime_star_priestess": AV("av_anime_star_priestess", "星辰巫女", 4, "anime", 3),
+            "av_anime_phoenix_maiden": AV("av_anime_phoenix_maiden", "鳳凰巫姬", 4, "anime", 4),
+            "av_anime_flame_knight":   AV("av_anime_flame_knight",   "烈焰騎士", 3, "anime", 5),
+            "av_anime_frost_mage":     AV("av_anime_frost_mage",     "霜語法師", 3, "anime", 5),
+            "av_anime_thunder_blade":  AV("av_anime_thunder_blade",  "雷刃劍客", 4, "anime", 5),
+            "av_anime_school_prince":  AV("av_anime_school_prince",  "學園王子", 3, "anime", 6),
+            // 神話 & 特別款：常駐（可以慢慢存錢買）
+            "av_anime_dragon_lord":    AV("av_anime_dragon_lord",    "龍紋劍皇", 5, "anime", null),
+            "av_anime_moon_empress":   AV("av_anime_moon_empress",   "月華女皇", 5, "anime", null),
+            "av_anime_shadow_hunter":  AV("av_anime_shadow_hunter",  "暗影獵人", 4, "anime", null),
+            "av_anime_flower_saint":   AV("av_anime_flower_saint",   "花之聖女", 3, "anime", null),
+            // ===== B. 療癒動物盲盒（全部常駐收集）=====
+            "av_cute_capybara": AV("av_cute_capybara", "悠哉水豚",   3, "cute", null),
+            "av_cute_shiba":    AV("av_cute_shiba",    "微笑柴犬",   2, "cute", null),
+            "av_cute_cat":      AV("av_cute_cat",      "奶油貓",     2, "cute", null),
+            "av_cute_penguin":  AV("av_cute_penguin",  "圓滾企鵝",   2, "cute", null),
+            "av_cute_bear":     AV("av_cute_bear",     "圍巾小熊",   3, "cute", null),
+            "av_cute_bunny":    AV("av_cute_bunny",    "長耳兔",     2, "cute", null),
+            "av_cute_dino":     AV("av_cute_dino",     "薄荷小恐龍", 3, "cute", null),
+            "av_cute_otter":    AV("av_cute_otter",    "悠遊水獺",   3, "cute", null)
+        };
+
+        // 每週限定檔期（日期要調整跟我說；格式 YYYY-MM-DD）
+        const AVATAR_EVENTS = [
+            { week: 1, label: "🎆 盛夏祭典", start: "2026-07-28", end: "2026-08-03" },
+            { week: 2, label: "🌊 深海探險", start: "2026-08-04", end: "2026-08-10" },
+            { week: 3, label: "✨ 星空魔法", start: "2026-08-11", end: "2026-08-17" },
+            { week: 4, label: "🐉 神獸傳說", start: "2026-08-18", end: "2026-08-24" },
+            { week: 5, label: "🔥 元素使者", start: "2026-08-25", end: "2026-08-31" },
+            { week: 6, label: "🎓 開學典禮", start: "2026-09-01", end: "2026-09-07" }
+        ];
+        // 回歸週：所有過去的限定款短暫回歸，讓錯過的同學有補救機會
+        const AVATAR_REVIVAL = { label: "🎁 限定回歸週", start: "2026-09-08", end: "2026-09-14" };
+
+        const isoDate = (d = new Date()) => {
+            const p = n => String(n).padStart(2, "0");
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        };
+        const getAvatarEvent = (date = new Date()) => {
+            const t = isoDate(date);
+            return AVATAR_EVENTS.find(e => t >= e.start && t <= e.end) || null;
+        };
+        const isAvatarRevival = (date = new Date()) => {
+            const t = isoDate(date);
+            return t >= AVATAR_REVIVAL.start && t <= AVATAR_REVIVAL.end;
+        };
+        // 目前商店買得到的頭像：常駐 + 本週限定（回歸週則全部開放）
+        const getShopAvatars = (date = new Date()) => {
+            const ev = getAvatarEvent(date);
+            const revival = isAvatarRevival(date);
+            return Object.values(AVATAR_ITEMS).filter(a =>
+                a.week === null || revival || (ev && a.week === ev.week)
+            );
+        };
+        // 由圖片路徑反查稀有度（用來套 CSS 特效）；內建 8 個舊頭像沒有特效
+        const getAvatarTier = (src) => {
+            if (!src) return 0;
+            const found = Object.values(AVATAR_ITEMS).find(a => a.src === src);
+            return found ? found.tier : 0;
         };
 
         // 答錯安慰文案（答對 0~1 題時隨機顯示一句）
@@ -530,6 +650,23 @@
                 </div>
             </div>
         );
+        // 頭像顯示元件：自動依稀有度套上發光/旋轉光環特效
+        const AvatarView = ({ src, size = 64, border = true, className = "" }) => {
+            const tier = getAvatarTier(src);
+            const fxClass = tier >= 2 ? `av-fx av-t${tier}` : "";
+            return (
+                <span className={`${fxClass} inline-block shrink-0 ${className}`} style={{ width: size, height: size }}>
+                    <img
+                        src={src}
+                        alt=""
+                        style={{ width: size, height: size }}
+                        className={`rounded-full object-cover bg-white ${border ? "border-2 border-slate-200" : ""}`}
+                        onError={(e) => { e.target.style.visibility = "hidden"; }}
+                    />
+                </span>
+            );
+        };
+
         const BuffBar = ({ user }) => {
             const active = (user.buffs || []).filter(b => b && b.expiresAt > Date.now());
             if (active.length === 0) return null;
@@ -1157,8 +1294,49 @@
         };
 
         const ShopView = ({ user, db, classId, setMsg }) => {
-            const [tab, setTab] = useState("weapon");
+            const [tab, setTab] = useState("avatar");
             const [globalLimits, setGlobalLimits] = useState({});
+            const [previewAvatar, setPreviewAvatar] = useState(null);
+            const buyingAvatarRef = useRef(false);
+
+            const owned = Array.isArray(user.ownedAvatars) ? user.ownedAvatars : [];
+            const avatarEvent = getAvatarEvent();
+            const inRevival = isAvatarRevival();
+            const shopAvatars = getShopAvatars();
+
+            const buyAvatar = async (item) => {
+                if (buyingAvatarRef.current) return;
+                buyingAvatarRef.current = true;
+                const { doc, runTransaction } = window.firebaseModules;
+                const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', user.id);
+                try {
+                    await runTransaction(db, async (t) => {
+                        const uDoc = await t.get(userRef);
+                        const uData = uDoc.data();
+                        const ownedNow = Array.isArray(uData.ownedAvatars) ? uData.ownedAvatars : [];
+                        if (ownedNow.includes(item.id)) throw "你已經擁有這個頭像了";
+                        if ((uData.gold || 0) < item.cost) throw "金幣不足";
+                        t.update(userRef, {
+                            gold: (uData.gold || 0) - item.cost,
+                            totalGoldSpent: (uData.totalGoldSpent || 0) + item.cost,
+                            ownedAvatars: [...ownedNow, item.id]
+                        });
+                    });
+                    setPreviewAvatar(null);
+                    setMsg({
+                        title: "🎉 入手新頭像！",
+                        content: (
+                            <div className="text-center space-y-3">
+                                <div className="flex justify-center py-2"><AvatarView src={item.src} size={140} /></div>
+                                <p className="font-bold text-lg">{item.name}</p>
+                                <p className="text-sm text-slate-500">到「物品 → 頭像」就可以換上囉！</p>
+                            </div>
+                        )
+                    });
+                } catch (e) {
+                    setMsg({ title: "購買失敗", content: typeof e === "string" ? e : "發生錯誤" });
+                } finally { buyingAvatarRef.current = false; }
+            };
 
             useEffect(() => {
                 if (!db) return;
@@ -1227,33 +1405,101 @@
                             </button>
                         ))}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {itemsForTab.map(item => {
-                            const sold = globalLimits[item.id] || 0;
-                            const limit = item.globalLimit || 0;
-                            const isLimited = item.type === "upgradeStone";
-                            const soldOut = isLimited && sold >= limit;
-                            const canAfford = (user.gold || 0) >= item.cost;
-                            return (
-                                <ItemCard
-                                    key={item.id}
-                                    item={item}
-                                    badge={isLimited ? <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">全校 {sold}/{limit}</span> : null}
-                                    action={
-                                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
-                                            <span className="text-yellow-600 font-black"><i className="fas fa-coins"></i> {item.cost}</span>
-                                            <button
-                                                disabled={!canAfford || soldOut}
-                                                onClick={() => buy(item)}
-                                                className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed">
-                                                {soldOut ? "已售完" : !canAfford ? "金幣不足" : "購買"}
-                                            </button>
+                    {tab === "avatar" ? (
+                        <div className="space-y-3">
+                            <div className="glass-panel p-3 text-center">
+                                {inRevival ? (
+                                    <div className="font-bold text-purple-600">{AVATAR_REVIVAL.label}：所有過去的限定頭像通通回歸，錯過的快補！</div>
+                                ) : avatarEvent ? (
+                                    <div className="font-bold text-blue-600">本週限定：{avatarEvent.label} <span className="text-xs text-slate-500 font-normal">（{avatarEvent.end} 前）</span></div>
+                                ) : (
+                                    <div className="font-bold text-slate-500">目前沒有限定活動，以下為常駐頭像</div>
+                                )}
+                                <div className="text-xs text-slate-400 mt-1">已擁有 {owned.length} / {Object.keys(AVATAR_ITEMS).length} 款 · 買到的頭像到「物品 → 頭像」換上</div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {shopAvatars.map(item => {
+                                    const isOwned = owned.includes(item.id);
+                                    const canAfford = (user.gold || 0) >= item.cost;
+                                    return (
+                                        <div key={item.id} onClick={() => setPreviewAvatar(item)} className="rpg-card p-3 flex flex-col items-center cursor-pointer">
+                                            <AvatarView src={item.src} size={88} />
+                                            <div className="font-bold text-sm text-slate-800 mt-2 text-center">{item.name}</div>
+                                            <div className="flex items-center gap-1 mt-1 flex-wrap justify-center">
+                                                <span className={`tier-badge tier-${item.tier}`}>{AVATAR_TIER_LABEL[item.tier]}</span>
+                                                {item.week !== null && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">限定</span>}
+                                            </div>
+                                            <div className="mt-2 w-full">
+                                                {isOwned ? (
+                                                    <div className="w-full bg-slate-200 text-slate-600 py-1 rounded text-xs font-bold text-center">已擁有</div>
+                                                ) : (
+                                                    <div className="w-full text-center text-yellow-600 font-black text-sm"><i className="fas fa-coins"></i> {item.cost}{!canAfford && <span className="text-[10px] text-slate-400 font-normal block">金幣不足</span>}</div>
+                                                )}
+                                            </div>
                                         </div>
-                                    }
-                                />
-                            );
-                        })}
-                    </div>
+                                    );
+                                })}
+                            </div>
+                            {shopAvatars.length === 0 && <div className="text-center text-white/60 py-10">目前沒有可購買的頭像</div>}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {itemsForTab.map(item => {
+                                const sold = globalLimits[item.id] || 0;
+                                const limit = item.globalLimit || 0;
+                                const isLimited = item.type === "upgradeStone";
+                                const soldOut = isLimited && sold >= limit;
+                                const canAfford = (user.gold || 0) >= item.cost;
+                                return (
+                                    <ItemCard
+                                        key={item.id}
+                                        item={item}
+                                        badge={isLimited ? <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">全校 {sold}/{limit}</span> : null}
+                                        action={
+                                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                                                <span className="text-yellow-600 font-black"><i className="fas fa-coins"></i> {item.cost}</span>
+                                                <button
+                                                    disabled={!canAfford || soldOut}
+                                                    onClick={() => buy(item)}
+                                                    className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed">
+                                                    {soldOut ? "已售完" : !canAfford ? "金幣不足" : "購買"}
+                                                </button>
+                                            </div>
+                                        }
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {previewAvatar && (() => {
+                        const isOwned = owned.includes(previewAvatar.id);
+                        const canAfford = (user.gold || 0) >= previewAvatar.cost;
+                        return (
+                            <Modal title="頭像預覽" onClose={() => setPreviewAvatar(null)}>
+                                <div className="text-center space-y-3">
+                                    <div className="flex justify-center py-3"><AvatarView src={previewAvatar.src} size={180} /></div>
+                                    <h3 className="text-2xl font-black text-slate-800">{previewAvatar.name}</h3>
+                                    <div className="flex justify-center gap-2 flex-wrap">
+                                        <span className={`tier-badge tier-${previewAvatar.tier}`}>{AVATAR_TIER_LABEL[previewAvatar.tier]}</span>
+                                        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{previewAvatar.group === "anime" ? "動漫美型" : "療癒動物"}</span>
+                                        {previewAvatar.week !== null
+                                            ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold">本週限定</span>
+                                            : <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">常駐</span>}
+                                    </div>
+                                    {isOwned ? (
+                                        <div className="bg-slate-100 text-slate-600 py-3 rounded-lg font-bold">已擁有 — 到「物品 → 頭像」換上</div>
+                                    ) : (
+                                        <button disabled={!canAfford} onClick={() => buyAvatar(previewAvatar)}
+                                            className="w-full bg-green-500 text-white py-3 rounded-lg font-bold text-lg hover:bg-green-600 shadow disabled:opacity-40 disabled:cursor-not-allowed">
+                                            {canAfford ? <span><i className="fas fa-coins"></i> {previewAvatar.cost} 購買</span> : "金幣不足"}
+                                        </button>
+                                    )}
+                                    <div className="text-xs text-slate-400">你目前有 {user.gold || 0} 金幣</div>
+                                </div>
+                            </Modal>
+                        );
+                    })()}
                 </div>
             );
         };
@@ -1272,6 +1518,19 @@
                                   item.slot === "armor" ? "equippedArmor" : "equippedAccessory";
                 await updateUser({ [slotField]: item.id });
                 setMsg({ title: "裝備成功", content: `已裝備 ${item.name}` });
+            };
+            const equipAvatar = async (av) => {
+                await updateUser({ avatar: av.src });
+                setMsg({
+                    title: "✨ 換上新頭像",
+                    content: (
+                        <div className="text-center space-y-3">
+                            <div className="flex justify-center py-2"><AvatarView src={av.src} size={160} /></div>
+                            <p className="font-bold text-lg">{av.name}</p>
+                            <p className="text-sm text-slate-500">同學在大廳就會看到你的新造型！</p>
+                        </div>
+                    )
+                });
             };
             const unequip = async (slot) => {
                 const slotField = slot === "weapon" ? "equippedWeapon" :
@@ -1350,6 +1609,7 @@
                     <div className="flex gap-2">
                         <button onClick={() => setTab("equipment")} className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${tab === "equipment" ? "bg-blue-600 text-white shadow" : "bg-white text-slate-500 hover:bg-blue-50"}`}>⚔️ 裝備</button>
                         <button onClick={() => setTab("consumable")} className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${tab === "consumable" ? "bg-blue-600 text-white shadow" : "bg-white text-slate-500 hover:bg-blue-50"}`}>🧪 消耗品 ({consumableInv.reduce((a, b) => a + (b.count || 0), 0)})</button>
+                        <button onClick={() => setTab("avatar")} className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${tab === "avatar" ? "bg-blue-600 text-white shadow" : "bg-white text-slate-500 hover:bg-blue-50"}`}>🖼️ 頭像 ({(Array.isArray(user.ownedAvatars) ? user.ownedAvatars : []).length})</button>
                     </div>
 
                     {tab === "equipment" && (
@@ -1412,6 +1672,40 @@
                             ))}
                         </div>
                     )}
+
+                    {tab === "avatar" && (() => {
+                        const ownedIds = Array.isArray(user.ownedAvatars) ? user.ownedAvatars : [];
+                        const ownedAvs = ownedIds.map(id => AVATAR_ITEMS[id]).filter(Boolean);
+                        return (
+                            <div>
+                                <div className="glass-panel p-3 mb-3 text-center">
+                                    <div className="text-sm font-bold text-slate-700">我的頭像收藏 {ownedAvs.length} / {Object.keys(AVATAR_ITEMS).length}</div>
+                                    <div className="text-xs text-slate-500 mt-1">到「商店 → 頭像」收集更多！稀有度越高特效越華麗</div>
+                                </div>
+                                {ownedAvs.length === 0 ? (
+                                    <div className="text-center text-white/60 py-10">還沒有收藏任何頭像<br /><span className="text-xs">去商店的「🖼️ 頭像」分頁看看吧！</span></div>
+                                ) : (
+                                    <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+                                        {ownedAvs.map(av => {
+                                            const isWearing = user.avatar === av.src;
+                                            return (
+                                                <div key={av.id} className={`rpg-card p-2 flex flex-col items-center ${isWearing ? "ring-2 ring-blue-500" : ""}`}>
+                                                    <AvatarView src={av.src} size={72} />
+                                                    <div className="text-xs font-bold text-slate-700 mt-2 text-center leading-tight">{av.name}</div>
+                                                    <span className={`tier-badge tier-${av.tier} mt-1`}>{AVATAR_TIER_LABEL[av.tier]}</span>
+                                                    {isWearing ? (
+                                                        <div className="mt-2 w-full bg-blue-100 text-blue-700 py-1 rounded text-xs font-bold text-center">使用中</div>
+                                                    ) : (
+                                                        <button onClick={() => equipAvatar(av)} className="mt-2 w-full bg-blue-600 text-white py-1 rounded text-xs font-bold hover:bg-blue-700">換上</button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         };
@@ -1491,7 +1785,7 @@
                     <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
                         {filtered.map(u => (
                             <div key={u.id} onClick={() => setSelectedUser(u)} className="glass-panel p-3 flex flex-col items-center cursor-pointer hover:bg-white/80 transition transform hover:scale-105">
-                                <img src={u.avatar} className="w-20 h-20 rounded-full bg-white border-2 border-slate-200 object-cover shadow-sm" />
+                                <AvatarView src={u.avatar} size={80} />
                                 <div className="text-sm truncate font-bold mt-2 text-slate-700 w-full text-center">{u.nickname || "神秘人"}</div>
                                 <div className="text-[10px] mt-1 bg-slate-800 text-yellow-300 rounded-full px-2 py-0.5 font-bold">{getLevelInfo(u.xp).name} · Lv.{Math.floor((u.xp || 0) / 100)}</div>
                             </div>
@@ -1503,7 +1797,7 @@
                         return (
                             <Modal title="玩家資訊" onClose={() => setSelectedUser(null)}>
                                 <div className="text-center">
-                                    <img src={selectedUser.avatar} className="w-40 h-40 rounded-full mx-auto mb-4 border-4 border-white shadow-lg object-cover bg-white" />
+                                    <div className="flex justify-center mb-4"><AvatarView src={selectedUser.avatar} size={160} /></div>
                                     <h3 className="text-xl font-bold mb-1">{selectedUser.nickname || "神秘人"}</h3>
                                     <div className="inline-block bg-slate-800 text-yellow-300 rounded-full px-3 py-1 text-sm font-bold mb-3">元素 {getLevelInfo(selectedUser.xp).name} · Lv.{Math.floor((selectedUser.xp || 0) / 100)}</div>
                                     <div className="flex justify-center gap-4 text-sm mb-4">
@@ -2338,7 +2632,7 @@
                 <div className="max-w-4xl mx-auto pb-20">
                     <div className="glass-panel p-4 mb-4 sticky top-2 z-40">
                         <div className="flex items-center gap-4">
-                            <img src={currentUser.avatar} className="w-16 h-16 rounded-full border-2 border-blue-500 bg-white p-1 object-cover" />
+                            <AvatarView src={currentUser.avatar} size={64} />
                             <div className="flex-1">
                                 <div className="flex justify-between items-end mb-1">
                                     <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">

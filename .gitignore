@@ -7,3 +7,8 @@
 !/sw.js
 !/images
 !/.gitignore
+
+# 淘汰/備份用的圖不上傳（留在本機即可）
+images/avatars/淘汰/
+images/**/淘汰/
+images/**/備份/
