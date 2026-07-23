@@ -206,7 +206,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v3.7"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v3.9"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -266,7 +266,12 @@
             guildId: null,
             usedRevives: 0,
             loginDays: 1,
-            ownedAvatars: []
+            loginStreak: 1,
+            maxLoginStreak: 1,
+            ownedAvatars: [],
+            achievements: {},
+            progressStarCount: 0,
+            heartsSentTotal: 0
         };
 
         const CHAPTER_NAMES = {
@@ -435,6 +440,42 @@
             if (!src) return 0;
             const found = Object.values(AVATAR_ITEMS).find(a => a.src === src);
             return found ? found.tier : 0;
+        };
+
+        // ============================================================
+        // 成就徽章：不跟別人比，人人都拿得到（永久保留，不會歸零）
+        // value(u) >= target 即達成，達成給 gold 金幣
+        // ============================================================
+        const ACHIEVEMENTS = [
+            // --- 入門 ---
+            { id: "first_quiz",    name: "初次冒險",   icon: "🌱", desc: "完成第一次答題",           gold: 30,  target: 1,   group: "入門", value: u => u.totalQuizQuestions || 0 },
+            { id: "first_correct", name: "首次正解",   icon: "✅", desc: "答對第 1 題",              gold: 30,  target: 1,   group: "入門", value: u => u.totalQuizCorrect || 0 },
+            // --- 堅持（人人可得，最重要）---
+            { id: "streak_3",      name: "三日不輟",   icon: "🔥", desc: "連續登入 3 天",            gold: 60,  target: 3,   group: "堅持", value: u => u.maxLoginStreak || 0 },
+            { id: "streak_7",      name: "一週皆勤",   icon: "🔥", desc: "連續登入 7 天",            gold: 120, target: 7,   group: "堅持", value: u => u.maxLoginStreak || 0 },
+            { id: "streak_30",     name: "恆心之證",   icon: "🏆", desc: "連續登入 30 天",           gold: 300, target: 30,  group: "堅持", value: u => u.maxLoginStreak || 0 },
+            { id: "login_20",      name: "學園常客",   icon: "📅", desc: "累積登入 20 天",           gold: 120, target: 20,  group: "堅持", value: u => u.loginDays || 0 },
+            // --- 答題量（比努力不比聰明）---
+            { id: "quiz_30",       name: "勤學者",     icon: "📚", desc: "累積答題 30 題",           gold: 60,  target: 30,  group: "答題", value: u => u.totalQuizQuestions || 0 },
+            { id: "quiz_100",      name: "百題達人",   icon: "📖", desc: "累積答題 100 題",          gold: 180, target: 100, group: "答題", value: u => u.totalQuizQuestions || 0 },
+            { id: "quiz_300",      name: "題海遨遊",   icon: "🌊", desc: "累積答題 300 題",          gold: 400, target: 300, group: "答題", value: u => u.totalQuizQuestions || 0 },
+            { id: "correct_50",    name: "五十正解",   icon: "🎯", desc: "累積答對 50 題",           gold: 120, target: 50,  group: "答題", value: u => u.totalQuizCorrect || 0 },
+            { id: "correct_150",   name: "正解宗師",   icon: "🎓", desc: "累積答對 150 題",          gold: 300, target: 150, group: "答題", value: u => u.totalQuizCorrect || 0 },
+            // --- 進步（後段生的舞台）---
+            { id: "progress_1",    name: "進步的起點", icon: "📈", desc: "首次成為進步之星",         gold: 60,  target: 1,   group: "進步", value: u => u.progressStarCount || 0 },
+            { id: "progress_5",    name: "穩定成長",   icon: "🚀", desc: "成為進步之星 5 次",        gold: 180, target: 5,   group: "進步", value: u => u.progressStarCount || 0 },
+            // --- 收集 ---
+            { id: "avatar_3",      name: "頭像收藏家", icon: "🖼️", desc: "收集 3 款頭像",           gold: 60,  target: 3,   group: "收集", value: u => (u.ownedAvatars || []).length },
+            { id: "avatar_10",     name: "頭像大師",   icon: "👑", desc: "收集 10 款頭像",           gold: 250, target: 10,  group: "收集", value: u => (u.ownedAvatars || []).length },
+            { id: "full_gear",     name: "全副武裝",   icon: "🛡️", desc: "同時裝備武器、防具、飾品", gold: 100, target: 1,   group: "收集", value: u => (u.equippedWeapon && u.equippedArmor && u.equippedAccessory) ? 1 : 0 },
+            // --- PK / 社交 ---
+            { id: "pk_first_win",  name: "初戰告捷",   icon: "⚔️", desc: "PK 首次獲勝",              gold: 60,  target: 1,   group: "友誼", value: u => u.pkWins || 0 },
+            { id: "heart_10",      name: "友愛之心",   icon: "💖", desc: "送出 10 顆愛心",           gold: 60,  target: 10,  group: "友誼", value: u => u.heartsSentTotal || 0 }
+        ];
+        const ACHIEVEMENT_GROUPS = ["入門", "堅持", "答題", "進步", "收集", "友誼"];
+        const getPendingAchievements = (u) => {
+            const got = (u && u.achievements) || {};
+            return ACHIEVEMENTS.filter(a => !got[a.id] && a.value(u) >= a.target);
         };
 
         // 答錯安慰文案（答對 0~1 題時隨機顯示一句）
@@ -1747,7 +1788,8 @@
                         hearts: fm.increment(1)
                     });
                     await fm.updateDoc(fm.doc(db, 'artifacts', APP_ID, 'classes', user.class || classId, 'users', user.id), {
-                        heartsSentToday: { ...(user.heartsSentToday || {}), [target.id]: true }
+                        heartsSentToday: { ...(user.heartsSentToday || {}), [target.id]: true },
+                        heartsSentTotal: fm.increment(1)
                     });
                     setMsg({ title: "愛心發送", content: `你送了一顆愛心給 ${target.nickname || "神秘人"}！` });
                     setSelectedUser(null);
@@ -1977,6 +2019,7 @@
                         gold: (d.gold || 0) + goldDelta,
                         totalGoldEarned: (d.totalGoldEarned || 0) + goldDelta,
                         recentResults: recent,
+                        ...(bonus.progress ? { progressStarCount: (d.progressStarCount || 0) + 1 } : {}),
                         ...(bonus.mentorLine ? { lastMentorDate: todayStr } : {}),
                         baseMaxHp: newBaseMaxHp,
                         baseAtk: newBaseAtk,
@@ -2399,6 +2442,8 @@
             const [pkModal, setPkModal] = useState(null);
             const [pkNotification, setPkNotification] = useState(null);
             const [fortuneResult, setFortuneResult] = useState(null);
+            const [achievePopup, setAchievePopup] = useState(null);   // 剛達成的成就（陣列）
+            const [showAchievements, setShowAchievements] = useState(false);
             const [currentUser, setCurrentUser] = useState({ ...user, class: classId });
             const [pdfTarget, setPdfTarget] = useState(null);
             const [downloading, setDownloading] = useState(false);
@@ -2528,6 +2573,9 @@
                                 const d = snap.data();
                                 if (d.lastLoginDate === today) { awarded = false; return; } // 別台裝置已領過
                                 const eff = getEffectiveStats(d);
+                                // 連續登入：昨天有來就 +1，否則從 1 重新起算（maxLoginStreak 保留最佳紀錄）
+                                const yesterday = formatDate(new Date(Date.now() - ONE_DAY_MS));
+                                const newStreak = (d.lastLoginDate === yesterday) ? (d.loginStreak || 0) + 1 : 1;
                                 t.update(userRef, {
                                     hp: eff.maxHp,
                                     gold: (d.gold || 0) + 50,
@@ -2539,6 +2587,8 @@
                                     extraQuizUsed: false,
                                     heartsSentToday: {},
                                     loginDays: (d.loginDays || 0) + 1,
+                                    loginStreak: newStreak,
+                                    maxLoginStreak: Math.max(d.maxLoginStreak || 0, newStreak),
                                     buffs: cleanExpiredBuffs(d.buffs)
                                 });
                                 awarded = true;
@@ -2582,6 +2632,45 @@
                     { lastSeenAt: Date.now() }
                 ).catch(() => { });
             }, [db, user.id]);
+
+            // 成就檢查與發放（用 transaction 防重複發；達成即給金幣並跳慶祝視窗）
+            const achieveRef = useRef(false);
+            useEffect(() => {
+                if (!db || !currentUser || !currentUser.id) return;
+                if (achieveRef.current) return;
+                if (getPendingAchievements(currentUser).length === 0) return;
+                achieveRef.current = true;
+                (async () => {
+                    const { doc, runTransaction } = window.firebaseModules;
+                    const userRef = doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', currentUser.id);
+                    let awarded = [];
+                    try {
+                        await runTransaction(db, async (t) => {
+                            const snap = await t.get(userRef);
+                            if (!snap.exists()) return;
+                            const d = snap.data();
+                            const got = { ...(d.achievements || {}) };
+                            let goldAdd = 0;
+                            awarded = [];
+                            ACHIEVEMENTS.forEach(a => {
+                                if (!got[a.id] && a.value(d) >= a.target) {
+                                    got[a.id] = Date.now();
+                                    goldAdd += a.gold;
+                                    awarded.push(a);
+                                }
+                            });
+                            if (awarded.length === 0) return;
+                            t.update(userRef, {
+                                achievements: got,
+                                gold: (d.gold || 0) + goldAdd,
+                                totalGoldEarned: (d.totalGoldEarned || 0) + goldAdd
+                            });
+                        });
+                    } catch (e) { console.error("成就發放失敗", e); awarded = []; }
+                    achieveRef.current = false;
+                    if (awarded.length > 0) setAchievePopup(awarded);
+                })();
+            }, [currentUser]);
 
             // 首次冒險邀請：從沒答過題的學生，登入後跳出鼓勵視窗（答過就不再出現）
             const nudgedRef = useRef(false);
@@ -2671,11 +2760,28 @@
                     <div className="px-2">
                         {view === 'home' && (
                             <div className="space-y-4">
-                                <div className="glass-panel p-4 text-center cursor-pointer hover:bg-purple-50 border border-transparent hover:border-purple-300 transition" onClick={drawDailyFortune}>
-                                    <div className="flex items-center justify-center gap-2 text-purple-600 font-bold text-lg mb-1">
-                                        <i className="fas fa-star"></i> 每日元素占卜
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="glass-panel p-4 text-center cursor-pointer hover:bg-purple-50 border border-transparent hover:border-purple-300 transition" onClick={drawDailyFortune}>
+                                        <div className="flex items-center justify-center gap-2 text-purple-600 font-bold mb-1">
+                                            <i className="fas fa-star"></i> 每日占卜
+                                        </div>
+                                        <p className="text-xs text-slate-500">今天的運勢與幸運元素</p>
                                     </div>
-                                    <p className="text-xs text-slate-500">測測今天的運勢與幸運元素！</p>
+                                    {(() => {
+                                        const gotCount = Object.keys(currentUser.achievements || {}).length;
+                                        const pct = Math.round((gotCount / ACHIEVEMENTS.length) * 100);
+                                        return (
+                                            <div className="glass-panel p-4 text-center cursor-pointer hover:bg-amber-50 border border-transparent hover:border-amber-300 transition" onClick={() => setShowAchievements(true)}>
+                                                <div className="flex items-center justify-center gap-2 text-amber-600 font-bold mb-1">
+                                                    <i className="fas fa-medal"></i> 我的成就
+                                                </div>
+                                                <div className="w-full bg-slate-200 rounded-full h-2 my-1.5 overflow-hidden">
+                                                    <div className="bg-amber-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }}></div>
+                                                </div>
+                                                <p className="text-xs text-slate-500">已達成 {gotCount} / {ACHIEVEMENTS.length}</p>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 {inMaintenance ? (
@@ -2740,6 +2846,70 @@
                             </div>
                         </Modal>
                     )}
+
+                    {achievePopup && (
+                        <Modal title="🏅 達成成就！" onClose={() => setAchievePopup(null)}>
+                            <div className="text-center space-y-3">
+                                {achievePopup.map(a => (
+                                    <div key={a.id} className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 animate-bounce-short">
+                                        <div className="text-5xl mb-2">{a.icon}</div>
+                                        <div className="text-xl font-black text-amber-700">{a.name}</div>
+                                        <div className="text-sm text-slate-600 mt-1">{a.desc}</div>
+                                        <div className="text-yellow-600 font-bold mt-2"><i className="fas fa-coins"></i> +{a.gold} 金幣</div>
+                                    </div>
+                                ))}
+                                <button onClick={() => setAchievePopup(null)} className="w-full bg-amber-500 text-white py-3 rounded-lg font-bold hover:bg-amber-600">太棒了！</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {showAchievements && (() => {
+                        const got = currentUser.achievements || {};
+                        const gotCount = Object.keys(got).length;
+                        return (
+                            <Modal title={`🏅 我的成就 ${gotCount}/${ACHIEVEMENTS.length}`} onClose={() => setShowAchievements(false)} wide>
+                                <div className="space-y-4">
+                                    <div className="text-xs text-slate-500 text-center bg-amber-50 p-2 rounded border border-amber-200">
+                                        成就只跟自己比，達成就永久保留、還能領金幣——慢慢來，每個人都拿得到！
+                                    </div>
+                                    {ACHIEVEMENT_GROUPS.map(g => {
+                                        const list = ACHIEVEMENTS.filter(a => a.group === g);
+                                        return (
+                                            <div key={g}>
+                                                <h4 className="font-bold text-slate-700 text-sm mb-2 border-l-4 border-amber-400 pl-2">{g}</h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    {list.map(a => {
+                                                        const done = !!got[a.id];
+                                                        const cur = Math.min(a.value(currentUser), a.target);
+                                                        const pct = Math.round((cur / a.target) * 100);
+                                                        return (
+                                                            <div key={a.id} className={`p-3 rounded-lg border-2 flex gap-3 items-center ${done ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"}`}>
+                                                                <div className={`text-3xl ${done ? "" : "grayscale opacity-40"}`}>{a.icon}</div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className={`font-bold text-sm ${done ? "text-amber-700" : "text-slate-500"}`}>
+                                                                        {a.name} {done && <span className="text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded ml-1">已達成</span>}
+                                                                    </div>
+                                                                    <div className="text-xs text-slate-500 leading-tight">{a.desc}</div>
+                                                                    {!done && (
+                                                                        <div className="mt-1">
+                                                                            <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                                                                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${pct}%` }}></div>
+                                                                            </div>
+                                                                            <div className="text-[10px] text-slate-400 mt-0.5">{cur} / {a.target} · 獎勵 {a.gold} 金幣</div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </Modal>
+                        );
+                    })()}
 
                     {fortuneResult && (
                         <Modal title="✨ 今日運勢 ✨" onClose={() => setFortuneResult(null)}>
@@ -3305,6 +3475,34 @@
                 } catch (e) { setMsg("回填失敗：" + (e.message || e)); }
             };
 
+            // 一次性：把學生現有的「累積登入天數」當作連續登入天數補償（成就系統上線前沒有這個紀錄）
+            // 上限 7 天：學期初補償夠用，也避免之後誤按把「連續 30 天」成就錯發出去
+            const backfillStreak = async () => {
+                if (!confirm("要用『累積登入天數』補償『連續登入天數』嗎？\n（一次性作業，補償上限 7 天，只會補不會扣）")) return;
+                setMsg("補償中，請勿關閉視窗...");
+                try {
+                    const fm = window.firebaseModules;
+                    let scanned = 0, updated = 0;
+                    for (const c of CLASSES) {
+                        const snap = await fm.getDocs(fm.collection(db, 'artifacts', APP_ID, 'classes', c, 'users'));
+                        for (const d of snap.docs) {
+                            scanned++;
+                            const u = d.data();
+                            const credit = Math.min(u.loginDays || 0, 7);
+                            if (credit > (u.maxLoginStreak || 0)) {
+                                await fm.updateDoc(d.ref, {
+                                    maxLoginStreak: credit,
+                                    loginStreak: Math.max(u.loginStreak || 0, credit)
+                                });
+                                updated++;
+                            }
+                            if (scanned % 20 === 0) setMsg(`補償中... 已檢查 ${scanned} 位`);
+                        }
+                    }
+                    setMsg(`補償完成：檢查 ${scanned} 位，補償 ${updated} 位。學生下次登入就會收到「連續登入」相關成就。`);
+                } catch (e) { setMsg("補償失敗：" + (e.message || e)); }
+            };
+
             const resetStudentPassword = async (student) => {
                 if (!confirm(`確定要將 ${student.name} 的密碼重設為 "1234"？`)) return;
                 await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'artifacts', APP_ID, 'classes', classId, 'users', student.id), { password: "1234" });
@@ -3503,6 +3701,9 @@
                                         <input type="number" value={goldAmount} onChange={e => setGoldAmount(e.target.value)} className="border p-2 w-24 rounded font-bold text-right" />
                                         <button onClick={backfillProgress} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-emerald-700" title="從過去的答題紀錄回填進步之星排行榜資料（一次性）">
                                             <i className="fas fa-arrow-trend-up"></i> 回填進步之星資料
+                                        </button>
+                                        <button onClick={backfillStreak} className="bg-amber-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-amber-700" title="用累積登入天數補償連續登入天數（一次性，上限 7 天）">
+                                            <i className="fas fa-fire"></i> 補償連續登入天數
                                         </button>
                                     </div>
                                     {(() => {
