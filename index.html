@@ -206,7 +206,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v3.9"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v4.1"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -249,7 +249,16 @@
             { name: "氬", min: 3900, max: 4199, hp: 90, atk: 150, def: 100 },
             { name: "鉀", min: 4200, max: 4699, hp: 100, atk: 180, def: 100 },
             { name: "鈣", min: 4700, max: 5099, hp: 150, atk: 180, def: 120 },
-            { name: "鈧", min: 5100, max: 99999, hp: 160, atk: 180, def: 130 }
+            { name: "鈧", min: 5100, max: 5599, hp: 160, atk: 180, def: 130 },
+            { name: "鈦", min: 5600, max: 6099, hp: 170, atk: 190, def: 140 },
+            { name: "釩", min: 6100, max: 6599, hp: 180, atk: 190, def: 150 },
+            { name: "鉻", min: 6600, max: 7099, hp: 190, atk: 200, def: 160 },
+            { name: "錳", min: 7100, max: 7699, hp: 200, atk: 210, def: 170 },
+            { name: "鐵", min: 7700, max: 8299, hp: 220, atk: 220, def: 180 },
+            { name: "鈷", min: 8300, max: 8899, hp: 230, atk: 230, def: 190 },
+            { name: "鎳", min: 8900, max: 9599, hp: 240, atk: 240, def: 200 },
+            { name: "銅", min: 9600, max: 10299, hp: 250, atk: 250, def: 210 },
+            { name: "鋅", min: 10300, max: 999999, hp: 280, atk: 270, def: 230 }
         ];
 
         const INITIAL_STATS = {
@@ -507,6 +516,23 @@
         const getLevelInfo = (xp) => {
             const safeXp = xp || 0;
             return LEVEL_DATA.find(l => safeXp >= l.min && safeXp <= l.max) || LEVEL_DATA[LEVEL_DATA.length - 1];
+        };
+
+        // PK 每場給的 XP（攻守、輸贏都給——比的是「有沒有參與」，維持公平）
+        const PK_XP = 5;
+        // 加 XP 並處理升級：把該等級的屬性加成疊加到 upd（upd 可能已被獎勵改過）
+        // 回傳升級後的等級物件，沒升級則回傳 null
+        const applyXpGain = (upd, data, gain) => {
+            const oldXp = data.xp || 0;
+            const newXp = oldXp + gain;
+            upd.xp = newXp;
+            const newLvl = getLevelInfo(newXp);
+            if (newLvl.name === getLevelInfo(oldXp).name) return null;
+            upd.levelName = newLvl.name;
+            upd.baseMaxHp = (upd.baseMaxHp ?? data.baseMaxHp ?? data.maxHp ?? 100) + newLvl.hp;
+            upd.baseAtk = (upd.baseAtk ?? data.baseAtk ?? data.atk ?? 10) + newLvl.atk;
+            upd.baseDef = (upd.baseDef ?? data.baseDef ?? data.def ?? 10) + newLvl.def;
+            return newLvl;
         };
         const formatDate = (date) => {
             const d = new Date(date);
@@ -1802,11 +1828,17 @@
                 if (hasActiveBuff(target, "pk_shield")) return setMsg({ title: "PK 護盾", content: "對方有護盾保護，無法攻擊！" });
                 if ((target.dailyPkDefenses || 0) >= 5) return setMsg({ title: "對方休息中", content: "對方今日已被攻擊 5 次，保護中。" });
 
+                // PK 題目跟每日答題一樣「只出目前進度的章節」，才是有效練習
+                const activeInfo = getActiveChapters();
+                if (activeInfo.maintenance || activeInfo.chapters.length === 0) {
+                    return setMsg({ title: "目前不開放 PK", content: "現在是維護期（學年統計中），暫停 PK。" });
+                }
                 const qRef = window.firebaseModules.collection(db, 'artifacts', APP_ID, 'public', 'data', 'questions');
                 const qSnap = await window.firebaseModules.getDocs(qRef);
                 if (qSnap.empty) return setMsg({ title: "錯誤", content: "目前沒有題庫，無法 PK" });
-                const questions = qSnap.docs.map(d => d.data()).filter(q => q.options && q.answer);
-                if (questions.length === 0) return setMsg({ title: "錯誤", content: "題庫沒有單選題" });
+                const questions = qSnap.docs.map(d => d.data())
+                    .filter(q => q.options && q.answer && activeInfo.chapters.includes(q.chapter));
+                if (questions.length === 0) return setMsg({ title: "錯誤", content: `目前進度（${activeInfo.label}）還沒有題目，無法 PK` });
                 const randomQ = questions[Math.floor(Math.random() * questions.length)];
 
                 setSelectedUser(null);
@@ -2224,38 +2256,42 @@
                         const dmgToDefender = calcPkDamage(aData, dData);
                         const dmgToAttacker = calcPkDamage(dData, aData);
 
+                        // 越級挑戰加成：戰力低於對方 80% 者視為弱勢，勝利給 3 倍、平手給 1.5 倍
+                        const powerOf = (u) => { const e = getEffectiveStats(u); return e.maxHp + e.atk + e.def; };
+                        const aPower = powerOf(aData), dPower = powerOf(dData);
+                        const aUnderdog = aPower < dPower * 0.8;
+                        const dUnderdog = dPower < aPower * 0.8;
+
                         let dUpd = { dailyPkDefenses: (dData.dailyPkDefenses || 0) + 1 };
                         let aUpd = {};
                         const goldGain = parseInt(qRewards.gold) || 10;
                         const hpGain = parseInt(qRewards.hp) || 0;
                         const atkGain = parseInt(qRewards.atk) || 0;
                         const defGain = parseInt(qRewards.def) || 0;
+                        // 依倍率發放獎勵，回傳實得金幣
+                        const giveReward = (upd, data, m) => {
+                            const g = Math.floor(goldGain * m);
+                            upd.gold = (data.gold || 0) + g;
+                            upd.totalGoldEarned = (data.totalGoldEarned || 0) + g;
+                            upd.baseMaxHp = (data.baseMaxHp ?? data.maxHp ?? 100) + Math.floor(hpGain * m);
+                            upd.baseAtk = (data.baseAtk ?? data.atk ?? 10) + Math.floor(atkGain * m);
+                            upd.baseDef = (data.baseDef ?? data.def ?? 10) + Math.floor(defGain * m);
+                            return g;
+                        };
 
                         if (attackerCorrect && defenderCorrect) {
-                            // 平手：雙方獲得獎勵
-                            const dEff = getEffectiveStats(dData);
-                            const aEff = getEffectiveStats(aData);
-                            dUpd.gold = (dData.gold || 0) + goldGain;
-                            dUpd.totalGoldEarned = (dData.totalGoldEarned || 0) + goldGain;
-                            dUpd.baseMaxHp = (dData.baseMaxHp ?? dData.maxHp ?? 100) + hpGain;
-                            dUpd.baseAtk = (dData.baseAtk ?? dData.atk ?? 10) + atkGain;
-                            dUpd.baseDef = (dData.baseDef ?? dData.def ?? 10) + defGain;
+                            // 平手：雙方都有獎勵（弱勢方 1.5 倍）
+                            const dm = dUnderdog ? 1.5 : 1, am = aUnderdog ? 1.5 : 1;
+                            const dg = giveReward(dUpd, dData, dm);
+                            const ag = giveReward(aUpd, aData, am);
                             dUpd.pkDraws = (dData.pkDraws || 0) + 1;
-                            aUpd.gold = (aData.gold || 0) + goldGain;
-                            aUpd.totalGoldEarned = (aData.totalGoldEarned || 0) + goldGain;
-                            aUpd.baseMaxHp = (aData.baseMaxHp ?? aData.maxHp ?? 100) + hpGain;
-                            aUpd.baseAtk = (aData.baseAtk ?? aData.atk ?? 10) + atkGain;
-                            aUpd.baseDef = (aData.baseDef ?? aData.def ?? 10) + defGain;
                             aUpd.pkDraws = (aData.pkDraws || 0) + 1;
-                            defenderLog = `平手！雙方都答對，獲得 ${goldGain} 金幣${hpGain ? "+" + hpGain + "HP " : ""}${atkGain ? "+" + atkGain + "ATK " : ""}${defGain ? "+" + defGain + "DEF" : ""}。`;
-                            attackerLog = `平手！你與 ${dData.nickname || "神秘人"} 都答對。`;
+                            defenderLog = `平手！雙方都答對，獲得 ${dg} 金幣${dm > 1 ? "（⚡越級加成 1.5 倍！）" : ""}。`;
+                            attackerLog = `平手！你與 ${dData.nickname || "神秘人"} 都答對，獲得 ${ag} 金幣${am > 1 ? "（⚡越級加成 1.5 倍！）" : ""}。`;
                         } else if (attackerCorrect && !defenderCorrect) {
-                            // 攻擊者勝：扣防守方 HP，攻擊方雙倍獎勵
-                            aUpd.gold = (aData.gold || 0) + goldGain * 2;
-                            aUpd.totalGoldEarned = (aData.totalGoldEarned || 0) + goldGain * 2;
-                            aUpd.baseMaxHp = (aData.baseMaxHp ?? aData.maxHp ?? 100) + hpGain * 2;
-                            aUpd.baseAtk = (aData.baseAtk ?? aData.atk ?? 10) + atkGain * 2;
-                            aUpd.baseDef = (aData.baseDef ?? aData.def ?? 10) + defGain * 2;
+                            // 攻擊者勝（越級挑戰成功給 3 倍）
+                            const am = aUnderdog ? 3 : 2;
+                            const ag = giveReward(aUpd, aData, am);
                             aUpd.pkWins = (aData.pkWins || 0) + 1;
                             let newDefHp = Math.max(0, (dData.hp || 0) - dmgToDefender);
                             // 復活符
@@ -2272,13 +2308,13 @@
                             dUpd.hp = newDefHp;
                             dUpd.pkLosses = (dData.pkLosses || 0) + 1;
                             defenderLog = `戰敗... 扣 ${dmgToDefender} HP${useRevive.defender ? "（復活符已自動觸發！）" : ""}`;
-                            attackerLog = `勝利！${dData.nickname || "神秘人"} 答錯，獲得雙倍獎勵 ${goldGain * 2} 金幣！`;
+                            attackerLog = am > 2
+                                ? `🔥 越級挑戰成功！你打敗了比自己強的對手，獲得 3 倍獎勵 ${ag} 金幣！`
+                                : `勝利！${dData.nickname || "神秘人"} 答錯，獲得雙倍獎勵 ${ag} 金幣！`;
                         } else if (!attackerCorrect && defenderCorrect) {
-                            dUpd.gold = (dData.gold || 0) + goldGain * 2;
-                            dUpd.totalGoldEarned = (dData.totalGoldEarned || 0) + goldGain * 2;
-                            dUpd.baseMaxHp = (dData.baseMaxHp ?? dData.maxHp ?? 100) + hpGain * 2;
-                            dUpd.baseAtk = (dData.baseAtk ?? dData.atk ?? 10) + atkGain * 2;
-                            dUpd.baseDef = (dData.baseDef ?? dData.def ?? 10) + defGain * 2;
+                            // 防守者勝（越級防守成功給 3 倍）
+                            const dm = dUnderdog ? 3 : 2;
+                            const dg = giveReward(dUpd, dData, dm);
                             dUpd.pkWins = (dData.pkWins || 0) + 1;
                             let newAttHp = Math.max(0, (aData.hp || 0) - dmgToAttacker);
                             if (newAttHp === 0) {
@@ -2293,7 +2329,9 @@
                             }
                             aUpd.hp = newAttHp;
                             aUpd.pkLosses = (aData.pkLosses || 0) + 1;
-                            defenderLog = `勝利！你答對，獲得雙倍獎勵 ${goldGain * 2} 金幣！`;
+                            defenderLog = dm > 2
+                                ? `🔥 越級防守成功！你擊退了比自己強的對手，獲得 3 倍獎勵 ${dg} 金幣！`
+                                : `勝利！你答對，獲得雙倍獎勵 ${dg} 金幣！`;
                             attackerLog = `戰敗... ${dData.nickname || "神秘人"} 答對，你扣 ${dmgToAttacker} HP${useRevive.attacker ? "（復活符已觸發！）" : ""}`;
                         } else {
                             // 雙方都錯：雙方都扣 HP
@@ -2304,6 +2342,14 @@
                             defenderLog = `慘烈... 雙方都答錯，各扣 30 HP。`;
                             attackerLog = `慘烈... 你與 ${dData.nickname || "神秘人"} 都答錯。`;
                         }
+
+                        // 參與獎：雙方都 +XP（不分輸贏），並處理可能的升級
+                        const aLvlUp = applyXpGain(aUpd, aData, PK_XP);
+                        const dLvlUp = applyXpGain(dUpd, dData, PK_XP);
+                        attackerLog += ` （+${PK_XP} XP）`;
+                        defenderLog += ` （+${PK_XP} XP）`;
+                        if (aLvlUp) attackerLog += ` 🎉 升級為「${aLvlUp.name}」！`;
+                        if (dLvlUp) defenderLog += ` 🎉 升級為「${dLvlUp.name}」！`;
 
                         const winner = attackerCorrect && defenderCorrect ? "draw"
                             : attackerCorrect && !defenderCorrect ? "attacker"
@@ -2317,6 +2363,7 @@
                             question: (pkData.question && pkData.question.question) || "",
                             attackerCorrect: !!attackerCorrect, defenderCorrect: !!defenderCorrect,
                             winner,
+                            upset: (winner === "attacker" && aUnderdog) || (winner === "defender" && dUnderdog),
                             damage: winner === "attacker" ? dmgToDefender : winner === "defender" ? dmgToAttacker : winner === "both_wrong" ? 30 : 0,
                             reviveUsed: useRevive.attacker || useRevive.defender,
                             timestamp: Date.now()
@@ -3334,7 +3381,10 @@
                                                     <span className={l.defenderCorrect ? "text-green-600" : "text-red-500"}>{l.defenderCorrect ? "✓" : "✗"}</span>
                                                 </td>
                                                 <td className="p-2 text-slate-500"><span className="text-blue-500 font-bold">{l.chapter}</span> {l.question}</td>
-                                                <td className="p-2 text-center"><span className={`px-2 py-0.5 rounded font-bold ${w.cls}`}>{w.text}</span></td>
+                                                <td className="p-2 text-center">
+                                                    <span className={`px-2 py-0.5 rounded font-bold ${w.cls}`}>{w.text}</span>
+                                                    {l.upset && <span className="ml-1 px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700 whitespace-nowrap">🔥越級</span>}
+                                                </td>
                                                 <td className="p-2 text-center font-mono text-red-500">{l.damage > 0 ? `-${l.damage}` : "—"}</td>
                                             </tr>
                                         );
