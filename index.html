@@ -206,7 +206,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v4.2"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v4.3"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -378,6 +378,9 @@
         // ============================================================
         const AVATAR_TIER_COST = { 2: 100, 3: 250, 4: 500, 5: 1000 };
         const AVATAR_TIER_LABEL = { 2: "稀有", 3: "史詩", 4: "傳說", 5: "神話" };
+        // 頭像圖版本記號：換圖後把數字 +1，強制學生裝置重新下載新圖（不吃舊快取）
+        // 只在「顯示圖片」時加在網址後面，不寫進資料庫，避免影響已購買/已裝備的學生
+        const AVATAR_IMG_VER = "2";
         const AV = (id, name, tier, group, week) => ({
             id, name, tier, group, week,
             src: `images/avatars/${id}.png`,
@@ -445,10 +448,17 @@
             );
         };
         // 由圖片路徑反查稀有度（用來套 CSS 特效）；內建 8 個舊頭像沒有特效
+        // 先去掉可能的 ?v=版本記號再比對，確保有無記號都能正確判斷
         const getAvatarTier = (src) => {
             if (!src) return 0;
-            const found = Object.values(AVATAR_ITEMS).find(a => a.src === src);
+            const clean = String(src).split("?")[0];
+            const found = Object.values(AVATAR_ITEMS).find(a => a.src === clean);
             return found ? found.tier : 0;
+        };
+        // 顯示頭像時，對本地頭像圖加上版本記號強制刷新快取（外部 flaticon 頭像不動）
+        const withImgVer = (src) => {
+            if (!src) return src;
+            return src.includes("images/avatars/") ? `${src.split("?")[0]}?v=${AVATAR_IMG_VER}` : src;
         };
 
         // ============================================================
@@ -724,7 +734,7 @@
             return (
                 <span className={`${fxClass} inline-block shrink-0 ${className}`} style={{ width: size, height: size }}>
                     <img
-                        src={src}
+                        src={withImgVer(src)}
                         alt=""
                         style={{ width: size, height: size }}
                         className={`rounded-full object-cover bg-white ${border ? "border-2 border-slate-200" : ""}`}
