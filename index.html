@@ -206,7 +206,7 @@
         // Config
         // ============================================================
         const APP_ID = "science_game_v1";
-        const APP_VERSION = "v4.3"; // 每次改版遞增，讓真機能分辨新版與快取舊版
+        const APP_VERSION = "v4.4"; // 每次改版遞增，讓真機能分辨新版與快取舊版
         const CLASSES = ["智", "仁", "勇", "信", "義", "和", "平", "誠"];
         // 老師密碼不放明文：只存「加鹽 SHA-256 雜湊值」，原始碼公開也看不出密碼
         const TEACHER_PWD_SALT = "alchemy-2026";
@@ -526,6 +526,11 @@
         const getLevelInfo = (xp) => {
             const safeXp = xp || 0;
             return LEVEL_DATA.find(l => safeXp >= l.min && safeXp <= l.max) || LEVEL_DATA[LEVEL_DATA.length - 1];
+        };
+        // Lv 數字 = 元素在列表中的序號（氫=Lv.1、氦=Lv.2…鋅=Lv.30），與元素名一一對應
+        const getLevelNum = (xp) => {
+            const info = getLevelInfo(xp);
+            return LEVEL_DATA.indexOf(info) + 1;
         };
 
         // PK 每場給的 XP（攻守、輸贏都給——比的是「有沒有參與」，維持公平）
@@ -851,7 +856,7 @@
                         <img src={student.avatar} crossOrigin="anonymous" style={{ width: 80, height: 80, borderRadius: '50%', background: '#fff', border: '2px solid #3b82f6' }} />
                         <div>
                             <div style={{ fontSize: 22, fontWeight: 900 }}>{student.name} <span style={{ fontSize: 14, color: '#64748b' }}>（{student.nickname || '—'}）</span></div>
-                            <div style={{ color: '#64748b', fontSize: 14 }}>{student.class}班 {student.seat}號 ｜ 元素：<b>{student.levelName}</b> ｜ Lv.{Math.floor((student.xp || 0) / 100)} ｜ XP {student.xp || 0}</div>
+                            <div style={{ color: '#64748b', fontSize: 14 }}>{student.class}班 {student.seat}號 ｜ 元素：<b>{getLevelInfo(student.xp).name}</b> ｜ Lv.{getLevelNum(student.xp)} ｜ XP {student.xp || 0}</div>
                             {classRank > 0 && <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: 13 }}>全校排名 #{classRank} / {totalStudents}</div>}
                         </div>
                     </div>
@@ -1871,7 +1876,7 @@
                             <div key={u.id} onClick={() => setSelectedUser(u)} className="glass-panel p-3 flex flex-col items-center cursor-pointer hover:bg-white/80 transition transform hover:scale-105">
                                 <AvatarView src={u.avatar} size={80} />
                                 <div className="text-sm truncate font-bold mt-2 text-slate-700 w-full text-center">{u.nickname || "神秘人"}</div>
-                                <div className="text-[10px] mt-1 bg-slate-800 text-yellow-300 rounded-full px-2 py-0.5 font-bold">{getLevelInfo(u.xp).name} · Lv.{Math.floor((u.xp || 0) / 100)}</div>
+                                <div className="text-[10px] mt-1 bg-slate-800 text-yellow-300 rounded-full px-2 py-0.5 font-bold">{getLevelInfo(u.xp).name} · Lv.{getLevelNum(u.xp)}</div>
                             </div>
                         ))}
                     </div>
@@ -1883,7 +1888,7 @@
                                 <div className="text-center">
                                     <div className="flex justify-center mb-4"><AvatarView src={selectedUser.avatar} size={160} /></div>
                                     <h3 className="text-xl font-bold mb-1">{selectedUser.nickname || "神秘人"}</h3>
-                                    <div className="inline-block bg-slate-800 text-yellow-300 rounded-full px-3 py-1 text-sm font-bold mb-3">元素 {getLevelInfo(selectedUser.xp).name} · Lv.{Math.floor((selectedUser.xp || 0) / 100)}</div>
+                                    <div className="inline-block bg-slate-800 text-yellow-300 rounded-full px-3 py-1 text-sm font-bold mb-3">元素 {getLevelInfo(selectedUser.xp).name} · Lv.{getLevelNum(selectedUser.xp)}</div>
                                     <div className="flex justify-center gap-4 text-sm mb-4">
                                         <span className="text-red-500 font-bold">HP {selectedUser.hp || 0}/{eff.maxHp}</span>
                                         <span className="text-orange-500 font-bold">ATK {eff.atk}</span>
@@ -2782,9 +2787,9 @@
                             <div className="flex-1">
                                 <div className="flex justify-between items-end mb-1">
                                     <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">
-                                        <span className="element-badge text-lg">{currentUser.levelName}</span>
+                                        <span className="element-badge text-lg">{getLevelInfo(currentUser.xp).name}</span>
                                         {currentUser.nickname || currentUser.name}
-                                        <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600">Lv.{Math.floor((currentUser.xp || 0) / 100)}</span>
+                                        <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600">Lv.{getLevelNum(currentUser.xp)}</span>
                                     </h2>
                                     <div className="text-yellow-600 font-bold bg-yellow-50 px-2 py-1 rounded border border-yellow-200"><i className="fas fa-coins"></i> {currentUser.gold || 0}</div>
                                 </div>
@@ -3844,7 +3849,7 @@
                                                         <td className="p-3 font-bold text-slate-700">{s.seat}</td>
                                                         <td className="p-3 font-bold">{s.name}</td>
                                                         <td className="p-3 text-slate-500">{s.nickname || "-"}</td>
-                                                        <td className="p-3 text-center text-xs font-bold"><span className="bg-slate-800 text-yellow-300 rounded-full px-2 py-1 whitespace-nowrap">{getLevelInfo(s.xp).name} · Lv.{Math.floor((s.xp || 0) / 100)}</span></td>
+                                                        <td className="p-3 text-center text-xs font-bold"><span className="bg-slate-800 text-yellow-300 rounded-full px-2 py-1 whitespace-nowrap">{getLevelInfo(s.xp).name} · Lv.{getLevelNum(s.xp)}</span></td>
                                                         <td className="p-3 text-right font-mono text-yellow-600 font-bold">{s.gold || 0}</td>
                                                         <td className="p-3 text-center font-mono text-xs">HP{eff.maxHp}/A{eff.atk}/D{eff.def}</td>
                                                         <td className="p-3 text-center font-mono text-xs">{acc !== null ? <span className={`px-2 py-1 rounded font-bold ${acc < 60 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{acc}% ({s.totalQuizQuestions})</span> : <span className="text-slate-300">-</span>}</td>
